@@ -1,0 +1,18 @@
+# generated + commercial data: never commit (see data/README.md)
+data/*
+!data/README.md
+# build outputs
+dist/
+dist-web/
+node_modules/
+__pycache__/
+*.pyc
+tests/out/
+# local / secrets
+.env
+.env.*
+!.env.example
+*.xlsx
+*.zip
+*.bundle
+.DS_Store
