@@ -1,0 +1,31 @@
+{
+  "name": "bosta-target-tracker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Bosta Target Tracker: VP / Head / Team Leader / Sales / AM scorecards, AM portfolio overview and merchant ASP analysis (single-file React component + build and test tooling).",
+  "type": "module",
+  "scripts": {
+    "assemble": "python3 scripts/assemble.py",
+    "bundle:test": "esbuild dist/target_tracker.jsx --bundle --format=esm --loader:.jsx=jsx --outfile=dist/bundle.mjs --external:react --external:react-dom --external:lucide-react --log-level=error",
+    "check:scripts": "python3 -m py_compile scripts/*.py",
+    "test": "npm run check:scripts && npm run assemble && npm run bundle:test && node tests/smoke.mjs",
+    "web:dev": "npm run assemble && vite web --host",
+    "web:build": "npm run assemble && vite build web",
+    "web:preview": "vite preview web --host"
+  },
+  "dependencies": {
+    "lucide-react": "^0.383.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "esbuild": "^0.21.5",
+    "jsdom": "^24.1.0",
+    "vite": "^5.4.0"
+  },
+  "optionalDependencies": {
+    "@resvg/resvg-js": "^2.6.2"
+  },
+  "engines": { "node": ">=18" }
+}
