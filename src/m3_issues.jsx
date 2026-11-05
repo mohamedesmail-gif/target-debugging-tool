@@ -41,8 +41,9 @@ function MPOperationalIssues({ monthIdx, onOpenMerchant }) {
     ["Damaged", "parcels_damaged", "Parcels flagged damaged (mart: parcels_damaged)."],
     ["Compensation (EGP)", "compensation_amount", "Compensation paid to the merchant (mart: compensation_amount)."],
   ];
-  const series = (key) => MP_MONTHLY.map((m, i) => ({ x: labels[i], v: m[key] || 0 }));
-  const ins = (key) => mpInsight({ values: MP_MONTHLY.map((m) => m[key] || 0), labels, kind: "month", partialLast: true, good: "down" });
+  const [gran, setGran] = useState("Monthly");
+  const td = mpSeriesForRange(gran, { from: MP_RANGE_MIN, to: MP_RANGE_MAX });
+  const tm = td.rows.map(mpRowMetrics), tl = td.labels;
   return (
     <div>
       <MPGrid2 min={170}>
@@ -52,18 +53,17 @@ function MPOperationalIssues({ monthIdx, onOpenMerchant }) {
         ))}
       </MPGrid2>
       <MPSection title="Trend" />
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+        <MPPillRow tabs={["Daily", "Weekly", "Monthly"]} active={gran} onChange={setGran} />
+        <span style={{ fontSize: 11, color: COLORS.textFaint }}>{gran === "Monthly" ? "October is month-to-date." : gran === "Daily" ? "Daily view starts on Sep 1 and skips Fridays." : "Weekly view starts on Sep 1; the last week may be partial."} Each trend can also be read per 1,000 pickups.</span>
+      </div>
       <MPGrid2>
-        <MPChartCard title="Fake attempts" info="Fake delivery attempts per month. October is month-to-date." insight={ins("fake_attempts")}>
-          <MPLineChart data={series("fake_attempts")} xKey="x" series={[{ key: "v", label: "Fake attempts", color: COLORS.coral }]} partialLast fmtFn={(v) => fmt(v)} />
-        </MPChartCard>
-        <MPChartCard title="RTO without attempt" info="Returned to merchant with no delivery attempt, per month. October is month-to-date." insight={ins("rto_without_attempt")}>
-          <MPLineChart data={series("rto_without_attempt")} xKey="x" series={[{ key: "v", label: "RTO without attempt", color: COLORS.amber }]} partialLast fmtFn={(v) => fmt(v)} />
-        </MPChartCard>
+        <MPIncidentCard title="Fake attempts" field="fake" countLabel="Attempts" color={COLORS.coral} m={tm} labels={tl} kind={td.kind} partialLast={td.partialLast} info="Delivery attempts flagged as fake (mart: fake_attempts). Lower is better." />
+        <MPIncidentCard title="RTO without attempt" field="rto" countLabel="Parcels" color={COLORS.amber} m={tm} labels={tl} kind={td.kind} partialLast={td.partialLast} info="Parcels returned to the merchant with no delivery attempt (mart: rto_without_attempt). Lower is better." />
+        <MPIncidentCard title="Lost parcels" field="lost" color={COLORS.purple} m={tm} labels={tl} kind={td.kind} partialLast={td.partialLast} info="Parcels flagged lost (mart: parcels_lost). Lower is better." />
+        <MPIncidentCard title="Damaged parcels" field="dam" color={COLORS.coral} m={tm} labels={tl} kind={td.kind} partialLast={td.partialLast} info="Parcels flagged damaged (mart: parcels_damaged). Lower is better." />
+        <MPIncidentCard title="Compensation (EGP)" field="comp" countLabel="EGP" color={COLORS.slate} m={tm} labels={tl} kind={td.kind} partialLast={td.partialLast} info="Compensation paid to merchants in EGP (mart: compensation_amount). Lower is better." />
       </MPGrid2>
-      <MPChartCard title="Lost & damaged" info="Parcels flagged lost or damaged per month. October is month-to-date." insight={mpInsight({ values: MP_MONTHLY.map((m) => (m.parcels_lost || 0) + (m.parcels_damaged || 0)), labels, kind: "month", partialLast: true, good: "down" })}>
-        <MPBarChart data={MP_MONTHLY.map((m, i) => ({ x: labels[i], Lost: m.parcels_lost || 0, Damaged: m.parcels_damaged || 0 }))} xKey="x" partialLast
-          series={[{ key: "Lost", label: "Lost", color: COLORS.purple }, { key: "Damaged", label: "Damaged", color: COLORS.coral }]} />
-      </MPChartCard>
       {MP_MODE === "portfolio" && (
         <>
           <MPSection title={"Which merchants — " + mpMonthLabel(monthIdx)} />

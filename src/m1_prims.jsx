@@ -56,7 +56,7 @@ function mpTickIdx(n) {
   return idx;
 }
 
-function MPLineChart({ data, xKey, series, height = 170, fmtFn, yFormat, zeroBase = true, partialLast = false }) {
+function MPLineChart({ data, xKey, series, height = 170, fmtFn, yFormat, zeroBase = true, partialLast = false, refLines = [] }) {
   const W = 600, padL = 12, padR = 54, padB = 24;
   const padT = series.length > 1 ? 34 : 24;
   const iw = W - padL - padR, ih = height - padT - padB;
@@ -67,7 +67,8 @@ function MPLineChart({ data, xKey, series, height = 170, fmtFn, yFormat, zeroBas
   const f = fmtFn || (yFormat === "pct" ? (v) => mpPctStr(v, 1) : (v) => mpCompact(v));
   const vals = series.flatMap((s) => data.map((d) => d[s.key])).filter(mpOk);
   if (!n || !vals.length) return <MPEmpty />;
-  let lo = Math.min(...vals), hi = Math.max(...vals);
+  const rvs = refLines.map((r) => r.value).filter(mpOk);
+  let lo = Math.min(...vals, ...rvs), hi = Math.max(...vals, ...rvs);
   if (zeroBase) lo = Math.min(0, lo);
   else { const span = hi - lo || Math.abs(hi) * 0.1 || 1; lo -= span * 0.35; hi += span * 0.25; }
   if (hi === lo) hi = lo + 1;
@@ -95,6 +96,10 @@ function MPLineChart({ data, xKey, series, height = 170, fmtFn, yFormat, zeroBas
         </linearGradient>
       </defs>
       <line x1={padL} x2={W - padR} y1={base} y2={base} stroke={COLORS.panelBorder} strokeWidth={1} />
+      {refLines.filter((r) => mpOk(r.value)).map((r, ri) => (
+        <g key={ri}><line x1={padL} x2={W - padR} y1={y(r.value)} y2={y(r.value)} stroke={r.color || COLORS.textFaint} strokeWidth={1.2} strokeDasharray="5 4" />
+          <text x={W - padR + 4} y={y(r.value) + 3.5} fontSize={9.5} fill={r.color || COLORS.textFaint}>{r.label}</text></g>
+      ))}
       {series.length === 1 && data.slice(0, solidTo).every((d) => mpOk(d[series[0].key])) && solidTo > 1 && (
         <path d={`${path(series[0].key, 0, solidTo)} L${x(solidTo - 1).toFixed(1)} ${base} L${x(0).toFixed(1)} ${base} Z`} fill={`url(#${gid})`} />
       )}
@@ -400,7 +405,7 @@ function mpRowMetrics(r) {
   const lm = r.ecomm_pickups || 0, ful = r.fulfillment_pickups || 0, box = r.box_pickups || 0, vol = lm + ful + box;
   const rev = r.delivery_revenue_total || 0, vas = r.delivery_revenue_vas_total || 0;
   const ship = r.delivery_revenue_shipping != null ? r.delivery_revenue_shipping : rev - vas;
-  return { vol, lm, ful, box, rev, vas, ship, aspS: vol ? ship / vol : null, aspV: vol ? vas / vol : null, dsr: mpPct100(r, "dsr"), asr: mpPct100(r, "asr"), lost: r.parcels_lost || 0, dam: r.parcels_damaged || 0, comp: r.compensation_amount || 0, active: r.active_merchants };
+  return { vol, lm, ful, box, rev, vas, ship, aspS: vol ? ship / vol : null, aspV: vol ? vas / vol : null, dsr: mpPct100(r, "dsr"), asr: mpPct100(r, "asr"), lost: r.parcels_lost || 0, dam: r.parcels_damaged || 0, fake: r.fake_attempts || 0, rto: r.rto_without_attempt || 0, comp: r.compensation_amount || 0, active: r.active_merchants };
 }
 function mpMetricTableRows(rows, labelFn) {
   return rows.map((r, i) => ({ label: labelFn(r, i), _date: r.date, ...mpRowMetrics(r), _highlight: r._highlight, _partial: r._partial }));

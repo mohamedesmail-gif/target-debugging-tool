@@ -158,6 +158,7 @@ function LevelBar({ nav, current }) {
       ))}
       <InfoTip text="VP is the company view; Heads has one tab per team; team leaders show their AMs and sales. Only the levels your access allows are shown." />
       <span style={{ flex: 1 }} />
+      {nav.openDaily && <button data-testid="daily-btn" onClick={() => nav.openDaily(current)} style={{ padding: "6px 16px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, cursor: "pointer", border: `1px solid ${COLORS.blue}`, background: COLORS.panel, color: COLORS.blue }}>Daily analysis →</button>}
       {AUTH_ENABLED && (<>      <span data-testid="user-chip" style={{ fontSize: 12.5, color: COLORS.text }}><strong>{nav.session.name}</strong><span style={{ color: COLORS.textMuted }}> · {authRoleOf(nav.session)}</span></span>
       <InfoTip text="Your access level comes from your sign-in: VP sees everything; a head his own team; a team leader his AMs and sales; an AM or sales rep only their own view. With the data embedded in this file the screens are scoped but the data is still in the page: real enforcement needs the backend (docs/ACCESS.md)." />
       <button onClick={() => nav.signOut()} style={{ padding: "5px 12px", fontSize: 12, fontWeight: 600, borderRadius: 8, cursor: "pointer", border: `1px solid ${COLORS.panelBorder2}`, background: COLORS.panel, color: COLORS.textMuted }}>Sign out</button></>)}
@@ -194,6 +195,8 @@ function SalesScreen({ nav }) {
   const [view, setView] = useState("pickups"); // "pickups" | "asp"
   const [sortKey, setSortKey] = useState("mtdAvg"); const [sortDir, setSortDir] = useState("desc");
   const [openId, setOpenId] = useState(null);
+  const [pfOpen, setPfOpen] = useState(false);
+  const [cmp, setCmp] = useState("prev"); // pickups table: "prev" = against last month, "target" = against the rep's monthly target
   const sc = orgScore("sales", s), g = sc.g;
   const p = sc.pickups, a = sc.asp, ch = sc.churn;
   const el = DATA.wdElapsed, full = DATA.wdFull, rem = Math.max(0, full - el);
@@ -206,7 +209,7 @@ function SalesScreen({ nav }) {
   ].map((r) => {
     const mtdAvg = el ? r.mtd / el : 0, prevAvg = r.prev == null ? null : r.prev / salesWorkingDays(r.fp, prevEnd);
     const delta = prevAvg == null ? null : mtdAvg - prevAvg, gr = prevAvg > 0 ? (delta / prevAvg) * 100 : null;
-    return { ...r, mtdAvg, prevAvg, delta, gr, run: r.mtd + mtdAvg * rem, asp: r.dl ? r.rev / r.dl : null };
+    return { ...r, mtdAvg, prevAvg, delta, gr, run: r.mtd + mtdAvg * rem, asp: r.dl ? r.rev / r.dl : null, ofGoal: goal ? r.mtd / goal : null, shareP: pk ? r.mtd / pk : null, runOfGoal: goal ? (r.mtd + mtdAvg * rem) / goal : null };
   });
   const t = s.tlId ? ORG_TL[s.tlId] : null, h = ORG_HEAD[s.headId];
   const match = (r) => (!fid || r.id.toLowerCase().includes(fid.toLowerCase())) && (!fname || String(r.name).toLowerCase().includes(fname.toLowerCase()));
@@ -230,19 +233,28 @@ function SalesScreen({ nav }) {
         {r.prev != null && <div>Last month: <strong style={{ color: COLORS.text }}>{fmt(r.prev)}</strong> pickups in total, about {fmt(r.prevAvg, 1)} per working day from the first pickup. {r.status === "Churned" ? <span style={{ color: COLORS.coral }}>No pickup yet this month (provisional until month end).</span> : null}</div>}
       </div>
     </td></tr>);
+  if (pfOpen) {
+    const byId = new Map(LEAD_ROWS.map((r) => [r.id, r]));
+    const pfm = all.map((r) => byId.get(r.id)).filter(Boolean);
+    const pfAn = { ...mpSubsetAnalysis(pfm), synthetic: true };
+    return <PortfolioScreen am={s.name} amData={{ target: goal, team: s.team, base: pfm.length, kind: "sales", skipped: all.length - pfm.length }} analysis={pfAn} onBack={() => setPfOpen(false)} />;
+  }
   return (
     <OrgShell nav={nav} current="sales">
       <OrgCrumbs items={leadCrumbs(nav, s.headId, s.tlId, s.name)} />
-      <OrgSelect value={s.id} onChange={(id) => { nav.go("sales", id); setOpenId(null); }} options={nav.allowedSales.map((x) => ({ value: x.id, label: x.name }))} />
+      <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+        <OrgSelect value={s.id} onChange={(id) => { nav.go("sales", id); setOpenId(null); }} options={nav.allowedSales.map((x) => ({ value: x.id, label: x.name }))} />
+        <button onClick={() => setPfOpen(true)} style={{ padding: "9px 16px", borderRadius: 8, border: `1px solid ${COLORS.blue}`, background: COLORS.panel, color: COLORS.blue, fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>Portfolio overview →</button>
+      </div>
       <div style={{ color: COLORS.textMuted, fontSize: 13, margin: "6px 0 18px" }}>sales · {s.team} · {all.length} merchants (new this month and last month's acquisitions) · data as of {DATA.asOf}</div>
       <AchievementBar pct={ofTarget * 100} detail={fmt(pk) + " of " + fmt(goal) + " new pickups"} />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12, marginBottom: 16 }}>
+        <OrgCard label="Current total achievement vs target" info="New pickups so far this month (merchants whose first pickup was this month and who have this sales rep as owner), against the monthly new-pickups target of the targets sheet." value={fmt(pk)} accent={col} sub={<span>{fmt(ofTarget * 100, 1)}% of the monthly target ({fmt(goal)})</span>}><OrgBar pct={Math.min(1, ofTarget)} color={col} /></OrgCard>
         <OrgCard label="ASP (fresh sales)" info={ORG_INFO.aspFresh} value={a.actual == null ? "—" : fmt(a.actual, 1)} accent={a.actual != null && a.target ? (a.actual >= a.target ? COLORS.teal : COLORS.coral) : undefined} sub={a.target ? "target " + fmt(a.target, 1) + " · " + (a.actual != null ? (a.actual >= a.target ? "+" : "") + fmt(a.actual - a.target, 1) + " vs target" : "—") : "no target"} />
         {ch ? <OrgCard label="Churn (last month's new merchants)" info={ORG_INFO.churn} value={orgPct(ch.actual)} sub={<span>{ch.target != null ? "target ≤ " + orgPct(ch.target) : "no target"} · {fmt(ch.base)} merchants · <em>provisional</em></span>} /> : <OrgCard label="Churn (last month's new merchants)" info={ORG_INFO.churn} value="—" sub="no merchants acquired last month" />}
-        <OrgCard label="Current total achievement vs target" info="New pickups so far this month (merchants whose first pickup was this month and who have this sales rep as owner), against the monthly new-pickups target of the targets sheet." value={fmt(pk)} accent={col} sub={<span>{fmt(ofTarget * 100, 1)}% of the monthly target ({fmt(goal)})</span>}><OrgBar pct={Math.min(1, ofTarget)} color={col} /></OrgCard>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 22 }}>
-        <StatCard info="The sales rep's monthly new-pickups target, from the October targets sheet." label="Monthly target" value={fmt(goal)} sub="new pickups (from the targets sheet)" />
+        <StatCard info="The sales rep's monthly new-pickups target, from the October targets sheet." label="Monthly target" value={fmt(goal)} sub="" />
         <StatCard info="Monthly target ÷ working days in the month: the new pickups per working day the month needs on average." label="Target daily avg" value={fmt(goal / full)} sub="monthly target ÷ working days" />
         <StatCard info="New pickups so far this month ÷ working days elapsed (Fridays excluded)." label={"Actual daily avg (MTD, " + el + "d)"} value={fmt(avgDaily)} sub="pickups / day" />
         <StatCard info="Run rate = new pickups so far + the current daily average × the remaining working days: where the month ends if the pace does not change." label="Run rate (month end)" value={"≈ " + fmt(run)} sub={fmt(runPct * 100, 1) + "% of monthly target"} accent={runPct >= 1 ? COLORS.teal : COLORS.coral} />
@@ -271,12 +283,28 @@ function SalesScreen({ nav }) {
         <input value={fname} onChange={(e) => setFname(e.target.value)} placeholder="Business name" style={inp} />
         {(fid || fname) && <button onClick={() => { setFid(""); setFname(""); }} style={{ fontSize: 12, padding: "6px 10px", borderRadius: 8, border: `1px solid ${COLORS.panelBorder2}`, background: COLORS.panel, cursor: "pointer" }}>Clear</button>}
       </div>
+      {view === "pickups" && (
+        <div style={{ display: "flex", gap: 6, alignItems: "center", margin: "0 0 10px" }}>
+          <span style={{ fontSize: 11.5, color: COLORS.textFaint, textTransform: "uppercase", letterSpacing: ".06em", marginRight: 2 }}>Compare with</span>
+          {[["prev", "Last month"], ["target", "Merchants contribution"]].map(([k, l]) => (
+            <button key={k} onClick={() => { setCmp(k); setSortKey(k === "target" ? "mtd" : "mtdAvg"); setSortDir("desc"); setOpenId(null); }} style={{ padding: "5px 14px", fontSize: 12, fontWeight: 600, borderRadius: 999, cursor: "pointer", border: `1px solid ${cmp === k ? COLORS.text : COLORS.panelBorder2}`, background: cmp === k ? COLORS.text : COLORS.panel, color: cmp === k ? "#fff" : COLORS.textMuted }}>{l}</button>
+          ))}
+          <InfoTip text="Last month: this month's average per working day against last month's, with GR % and run rate. Merchants contribution: how much of this sales rep's monthly new-pickups target each merchant brings. Sales merchants have no weight of their own, so the table shows each merchant's share of the rep's target." />
+        </div>
+      )}
       {view === "pickups" ? (
         <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.panelBorder}`, borderRadius: 12, overflow: "hidden", marginBottom: 14 }}>
           <div style={{ maxHeight: 520, overflow: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead><tr style={{ position: "sticky", top: 0, background: "#F0F2F6", zIndex: 1 }}>
                 <Th onClick={() => onSort("name")} active={sortKey === "name"} dir={sortDir}>Merchant</Th>
+                {cmp === "target" ? (<>
+                <Th onClick={() => onSort("mtd")} active={sortKey === "mtd"} dir={sortDir} align="right">MTD total volume</Th>
+                <Th onClick={() => onSort("ofGoal")} active={sortKey === "ofGoal"} dir={sortDir} align="right">% of rep target</Th>
+                <Th onClick={() => onSort("shareP")} active={sortKey === "shareP"} dir={sortDir} align="right">Share of rep pickups</Th>
+                <Th onClick={() => onSort("run")} active={sortKey === "run"} dir={sortDir} align="right">Run rate</Th>
+                <Th onClick={() => onSort("runOfGoal")} active={sortKey === "runOfGoal"} dir={sortDir} align="right">Run rate % of target</Th>
+                </>) : (<>
                 <Th onClick={() => onSort("mtdAvg")} active={sortKey === "mtdAvg"} dir={sortDir} align="right">MTD avg daily</Th>
                 <Th onClick={() => onSort("prevAvg")} active={sortKey === "prevAvg"} dir={sortDir} align="right">Last month avg daily</Th>
                 <Th onClick={() => onSort("delta")} active={sortKey === "delta"} dir={sortDir} align="right">Delta</Th>
@@ -284,13 +312,21 @@ function SalesScreen({ nav }) {
                 <Th onClick={() => onSort("mtd")} active={sortKey === "mtd"} dir={sortDir} align="right">MTD total volume</Th>
                 <Th onClick={() => onSort("prev")} active={sortKey === "prev"} dir={sortDir} align="right">Last month total volume</Th>
                 <Th onClick={() => onSort("run")} active={sortKey === "run"} dir={sortDir} align="right">Run rate</Th>
+                </>)}
                 <Th onClick={() => onSort("status")} active={sortKey === "status"} dir={sortDir} align="right">Status</Th>
               </tr></thead>
               <tbody>
-                {shown.length === 0 ? <tr><td colSpan={9} style={{ padding: 16, textAlign: "center", color: COLORS.textFaint }}>No merchants</td></tr> : sorted(shown).map((r) => (
+                {shown.length === 0 ? <tr><td colSpan={cmp === "target" ? 7 : 9} style={{ padding: 16, textAlign: "center", color: COLORS.textFaint }}>No merchants</td></tr> : sorted(shown).map((r) => (
                   <React.Fragment key={r.id}>
                     <tr onClick={() => setOpenId(openId === r.id ? null : r.id)} style={{ borderTop: `1px solid ${COLORS.panelBorder}`, cursor: "pointer", background: openId === r.id ? "rgba(76,110,245,0.06)" : "transparent" }}>
                       {nameCell(r, openId === r.id)}
+                      {cmp === "target" ? (<>
+                      <td style={mono}>{fmt(r.mtd)}</td>
+                      <td style={{ ...mono, color: COLORS.textMuted }}>{r.ofGoal == null ? "—" : fmt(r.ofGoal * 100, 2) + "%"}</td>
+                      <td style={{ ...mono, color: COLORS.textMuted }}>{r.shareP == null ? "—" : fmt(r.shareP * 100, 1) + "%"}</td>
+                      <td style={{ ...mono, color: COLORS.textMuted }}>{fmt(r.run, 0)}</td>
+                      <td style={{ ...mono, color: COLORS.textMuted }}>{r.runOfGoal == null ? "—" : fmt(r.runOfGoal * 100, 2) + "%"}</td>
+                      </>) : (<>
                       <td style={mono}>{fmt(r.mtdAvg, 1)}</td>
                       <td style={{ ...mono, color: COLORS.textMuted }}>{r.prevAvg == null ? "—" : fmt(r.prevAvg, 1)}</td>
                       <td style={{ ...mono, color: dcol(r.delta) }}>{sgn(r.delta, 1)}</td>
@@ -298,9 +334,10 @@ function SalesScreen({ nav }) {
                       <td style={{ ...mono, color: COLORS.textMuted }}>{fmt(r.mtd)}</td>
                       <td style={{ ...mono, color: COLORS.textMuted }}>{r.prev == null ? "—" : fmt(r.prev)}</td>
                       <td style={{ ...mono, color: COLORS.textMuted }}>{fmt(r.run, 0)}</td>
+                      </>)}
                       <td style={{ padding: "9px 14px", textAlign: "right" }}><CategoryBadge category={r.status} /></td>
                     </tr>
-                    {openId === r.id && drill(r, 9)}
+                    {openId === r.id && drill(r, cmp === "target" ? 7 : 9)}
                   </React.Fragment>
                 ))}
               </tbody>
@@ -334,7 +371,7 @@ function SalesScreen({ nav }) {
                         <td style={{ ...mono, color: COLORS.textMuted }}>{fmt(r.dl)}</td>
                         <td style={{ ...mono, fontWeight: 600 }}>{fmt(r.asp, 2)}</td>
                         <td style={mono}>{r.share == null ? "—" : fmt(r.share * 100, 2) + "%"}</td>
-                        <td style={{ ...mono, color: dcol(r.gapC) }}>{r.gapC == null ? "—" : aspSgn(r.gapC, 3)}</td>
+                        <td style={{ ...mono, color: dcol(r.gapC) }}>{r.gapC == null ? "—" : aspSgn(r.gapC, 2)}</td>
                         <td style={{ padding: "9px 14px", textAlign: "right" }}><CategoryBadge category={r.status} /></td>
                       </tr>
                       {openId === r.id && drill(r, 6)}
@@ -366,6 +403,8 @@ function AmScoreCards({ amName, an }) {
   const col = ofTarget >= 1 ? COLORS.teal : COLORS.coral;
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12, marginBottom: 16 }}>
+      <OrgCard label="Current total achievement vs target" info="Pickups so far this month across all merchants of the portfolio, against the monthly pickups target of the targets sheet." value={fmt(pk)} accent={col}
+        sub={<span>{fmt(ofTarget * 100, 1)}% of the monthly target ({fmt(goal)})</span>}><OrgBar pct={Math.min(1, ofTarget)} color={col} /></OrgCard>
       <OrgCard label="ASP" info={ORG_INFO.asp} value={asp.actual == null ? "—" : fmt(asp.actual, 1)} accent={asp.actual != null ? (asp.actual >= asp.target ? COLORS.teal : COLORS.coral) : undefined}
         sub={`target ${fmt(asp.target, 1)} · ${asp.actual != null ? (asp.actual >= asp.target ? "+" : "") + fmt(asp.actual - asp.target, 1) : "—"} vs target`} />
       {a.t.retention != null ? (
@@ -373,8 +412,6 @@ function AmScoreCards({ amName, an }) {
       ) : (
         <OrgCard label="Retention" info="Startups AMs have no retention target in the October sheet (their weights are 70% pickups and 30% ASP)." value="—" sub="no retention target for this team" />
       )}
-      <OrgCard label="Current total achievement vs target" info="Pickups so far this month across all merchants of the portfolio, against the monthly pickups target of the targets sheet." value={fmt(pk)} accent={col}
-        sub={<span>{fmt(ofTarget * 100, 1)}% of the monthly target ({fmt(goal)})</span>}><OrgBar pct={Math.min(1, ofTarget)} color={col} /></OrgCard>
     </div>
   );
 }
@@ -453,7 +490,7 @@ function AspTop5({ title, list, info }) {
       {list.length === 0 ? <div style={{ fontSize: 12, color: COLORS.textFaint }}>None</div> : list.map((r) => (
         <div key={r.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12, padding: "2px 0" }}>
           <span style={{ color: COLORS.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.name}</span>
-          <span style={{ fontFamily: "'IBM Plex Mono', monospace", color: r.aspGapC < 0 ? COLORS.coral : COLORS.teal, whiteSpace: "nowrap" }}>{aspSgn(r.aspGapC, 3)}</span>
+          <span style={{ fontFamily: "'IBM Plex Mono', monospace", color: r.aspGapC < 0 ? COLORS.coral : COLORS.teal, whiteSpace: "nowrap" }}>{aspSgn(r.aspGapC, 2)}</span>
         </div>
       ))}
     </div>
@@ -640,7 +677,7 @@ function AspMerchantTable({ rows, sortKey, sortDir, onSort, expandedId, onRowCli
                     <td style={{ ...td, color: COLORS.textMuted }}>{fmt(m.aspDlv)}</td>
                     <td style={{ ...td, fontWeight: 600 }}>{fmt(m.aspTotal, 2)}</td>
                     <td style={td}>{m.aspShare == null ? "—" : fmt(m.aspShare * 100, 2) + "%"}</td>
-                    <td title={aspGapHover(m, c)} style={{ ...td, color: colored(m.aspGapC) }}>{m.aspGapC == null ? "—" : aspSgn(m.aspGapC, 3)}</td>
+                    <td title={aspGapHover(m, c)} style={{ ...td, color: colored(m.aspGapC) }}>{m.aspGapC == null ? "—" : aspSgn(m.aspGapC, 2)}</td>
                     <td style={{ ...td, color: m.aspRevGap == null ? COLORS.textFaint : m.aspRevGap > 0 ? COLORS.coral : COLORS.teal }}>{m.aspRevGap == null ? "—" : aspSgn(m.aspRevGap, 0)}</td>
                     <td style={{ padding: "9px 14px", whiteSpace: "nowrap" }}>{m.aspGroup ? <span style={{ background: ASP_GROUP_COLOR[m.aspGroup][0], color: ASP_GROUP_COLOR[m.aspGroup][1], borderRadius: 999, padding: "2px 10px", fontSize: 11.5, fontWeight: 600 }}>{m.aspGroup}</span> : "—"}</td>
                     <td style={{ ...td, color: COLORS.textMuted }}>{m.aspShip == null ? "—" : fmt(m.aspShip, 2)}</td>

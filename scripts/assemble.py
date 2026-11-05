@@ -53,7 +53,7 @@ trep('{fmt(insight.growthPct, 1)}% MoM avg daily)', '{fmt(insight.growthPct, 1)}
 
 # ---- org levels: states, navigation, routes, level bar, AM scorecards; the merchant-profile entry points are disabled
 trep('  const [profileBack, setProfileBack] = useState("tracker");\n  const [selectedMerchant, setSelectedMerchant] = useState(null);\n  const openMerchantProfile = (m, from) => { setSelectedMerchant({ ...m, am: m.am || amName }); setProfileBack(from || "tracker"); setScreen("profile"); };',
-     '  const [sess, setSess] = useState(hostSession || (AUTH_ENABLED ? null : AUTH_DEFAULT_SESSION));\n  const [loginMsg, setLoginMsg] = useState(null);\n  const viewerKey = sess ? sess.viewerKey : "vp";\n  const [leadTab, setLeadTab] = useState("all");\n  const [tlId, setTlId] = useState(ORG.tls[0].id);\n  const [salesId, setSalesId] = useState(ORG.sales[0].id);')
+     '  const [sess, setSess] = useState(hostSession || (AUTH_ENABLED ? null : AUTH_DEFAULT_SESSION));\n  const [loginMsg, setLoginMsg] = useState(null);\n  const viewerKey = sess ? sess.viewerKey : "vp";\n  const [leadTab, setLeadTab] = useState("all");\n  const [tlId, setTlId] = useState(ORG.tls[0].id);\n  const [salesId, setSalesId] = useState(ORG.sales[0].id);\n  const [dailySpec, setDailySpec] = useState(null);\n  const [dailyFrom, setDailyFrom] = useState("vp");')
 trep('const [screen, setScreen] = useState("tracker");', 'const [screen, setScreen] = useState(hostSession ? viewerDefault(parseViewer(hostSession.viewerKey)).screen : "vp");')
 trep(r'  if \(screen === "portfolio"\) \{.*?\n  \}\n  if \(screen === "profile"\) \{.*?\n  \}',
      """  const viewer = parseViewer(viewerKey), scope = scopeOf(viewer);
@@ -71,6 +71,15 @@ trep(r'  if \(screen === "portfolio"\) \{.*?\n  \}\n  if \(screen === "profile"\
       else if (level === "am") { if (!scope.ams.has(amName)) setAmName(AM_NAMES.find((n) => scope.ams.has(n))); setExpandedId(null); setScreen("tracker"); }
     },
     goAm: (name) => { if (!scope.ams.has(name)) return; setAmName(name); setExpandedId(null); setScreen("tracker"); },
+    openDaily: (cur) => {
+      let spec;
+      if (cur === "vp") spec = { kind: "vp", ent: LEAD_VP_ENT };
+      else if (cur === "heads") { const tabs = LEAD_TABS.filter(([k]) => k !== "all" && leadTabAllowed(scope, k)).map(([k]) => k); spec = { kind: "head", ent: LEAD_HEAD_BY_TEAM[tabs.includes(leadTab) ? leadTab : tabs[0]] }; }
+      else if (cur === "tl") { const ok = ORG.tls.filter((t) => scope.tls.has(t.id)); spec = { kind: "tl", ent: ok.find((t) => t.id === tlId) || ok[0] }; }
+      else if (cur === "sales") { const ok = ORG.sales.filter((x) => scope.sales.has(x.id)); spec = { kind: "sales", ent: ok.find((x) => x.id === salesId) || ok[0] }; }
+      else spec = { kind: "am", ent: ORG.ams.find((a) => a.name === amName) };
+      setDailySpec(spec); setDailyFrom(cur); setScreen("daily");
+    },
     session: sess,
     signOut: () => { setSess(null); setLoginMsg(AUTH_MESSAGES.signedOut); setExpandedId(null); if (onSignOut) onSignOut(); },
   };
@@ -89,6 +98,7 @@ trep(r'  if \(screen === "portfolio"\) \{.*?\n  \}\n  if \(screen === "profile"\
   if (screen === "portfolio") {
     return <PortfolioScreen am={amName} amData={amData} analysis={analysis} onBack={() => setScreen("tracker")} />;
   }
+  if (screen === "daily" && dailySpec) return <DailyAnalysisScreen nav={nav} spec={dailySpec} onBack={() => nav.go(dailyFrom === "heads" ? "heads" : dailyFrom, dailyFrom === "heads" ? leadTab : dailyFrom === "tl" ? tlId : dailyFrom === "sales" ? salesId : undefined)} />;
   if (screen === "vp") return <LeadershipScreen nav={nav} mode="vp" />;
   if (screen === "heads") return <LeadershipScreen nav={nav} mode="heads" />;
   if (screen === "tl") return <TLScreen nav={nav} />;
@@ -108,12 +118,26 @@ trep('      if (sortKey === "mtd") return dir * (a.mtd - b.mtd);', '      if (so
 _ts = tb['s'].index('        <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.panelBorder}`, borderRadius: 12, overflow: "hidden", marginBottom: 14 }}>\n          <div style={{ maxHeight: 520')
 _te = tb['s'].index('        <div style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12, color: COLORS.textFaint, padding: "10px 4px"')
 _old = tb['s'][_ts:_te]
-_toggle = """        <div style={{ display: "flex", gap: 6, alignItems: "center", margin: "-6px 0 10px" }}>
+_toggle = """        <div style={{ display: "flex", gap: 6, alignItems: "center", margin: "-6px 0 10px", flexWrap: "wrap" }}>
           {[["pickups", "Pickups"], ["asp", "ASP"]].map(([k, l]) => (
             <button key={k} onClick={() => { setTableView(k); setSortKey(k === "asp" ? "aspGapC" : "mtdAvgDaily"); setSortDir(k === "asp" ? "asc" : "desc"); setExpandedId(null); }} style={{ padding: "5px 14px", fontSize: 12, fontWeight: 600, borderRadius: 999, cursor: "pointer", border: `1px solid ${tableView === k ? COLORS.text : COLORS.panelBorder2}`, background: tableView === k ? COLORS.text : COLORS.panel, color: tableView === k ? "#fff" : COLORS.textMuted }}>{l}</button>
           ))}
           <InfoTip text="Switch the table between pickups and ASP. ASP = delivery revenue ÷ delivered parcels, Oct 1–4, compared with the same days of September. Shipping ASP = (revenue − VAS) ÷ delivered; VAS ASP = VAS revenue ÷ delivered." />
+          <span style={{ flex: 1 }} />
+          <span style={{ fontSize: 12, color: COLORS.textMuted }}>Search:</span>
+          <input value={fid} onChange={(e) => setFid(e.target.value)} placeholder="Business ID" aria-label="Search business ID" style={{ padding: "7px 10px", borderRadius: 8, border: `1px solid ${COLORS.panelBorder2}`, fontSize: 12.5, minWidth: 150, background: COLORS.panel }} />
+          <input value={fname} onChange={(e) => setFname(e.target.value)} placeholder="Business name" aria-label="Search business name" style={{ padding: "7px 10px", borderRadius: 8, border: `1px solid ${COLORS.panelBorder2}`, fontSize: 12.5, minWidth: 170, background: COLORS.panel }} />
+          {(fid || fname) && <button onClick={() => { setFid(""); setFname(""); }} style={{ fontSize: 12, padding: "6px 10px", borderRadius: 8, border: `1px solid ${COLORS.panelBorder2}`, background: COLORS.panel, cursor: "pointer" }}>Clear</button>}
         </div>
+        {tableView === "pickups" && (
+          <div style={{ display: "flex", gap: 6, alignItems: "center", margin: "0 0 10px" }}>
+            <span style={{ fontSize: 11.5, color: COLORS.textFaint, textTransform: "uppercase", letterSpacing: ".06em", marginRight: 2 }}>Compare with</span>
+            {[["prev", "Last month"], ["target", "Merchants contribution"]].map(([k, l]) => (
+              <button key={k} onClick={() => { setCmpView(k); setSortKey("mtdAvgDaily"); setSortDir("desc"); setExpandedId(null); }} style={{ padding: "5px 14px", fontSize: 12, fontWeight: 600, borderRadius: 999, cursor: "pointer", border: `1px solid ${cmpView === k ? COLORS.text : COLORS.panelBorder2}`, background: cmpView === k ? COLORS.text : COLORS.panel, color: cmpView === k ? "#fff" : COLORS.textMuted }}>{l}</button>
+            ))}
+            <InfoTip text="Last month: this month's average per working day against the same days of last month, with GR % and run rate. Merchants contribution: each merchant's weight in the portfolio target (September × 1.60 ÷ working days), with achievement %." />
+          </div>
+        )}
         {tableView === "asp" ? (
           <AspMerchantTable rows={sortedMerchants} sortKey={sortKey} sortDir={sortDir} onSort={onSort} expandedId={expandedId} onRowClick={onRowClick} amName={amName} />
         ) : (
@@ -130,15 +154,16 @@ trep(r'(          <select\n            value=\{amName\}.*?          </select>\n)
 # StatCard + AchievementBar info icons
 trep('function StatCard({ label, value, sub, footnote, accent }) {', 'function StatCard({ label, value, sub, footnote, accent, info }) {')
 trep('marginBottom: 4 }}>{label}</div>', 'marginBottom: 4, display: "flex", alignItems: "center" }}>{label}{info && <InfoTip text={info} />}</div>')
-trep('>Achievement vs. Target</span>', '>Pickups achievement vs. monthly target<InfoTip text="Pickups so far \\u00f7 the monthly pickups target from the targets sheet. 100% means the target is reached. ASP and retention have their own targets in the cards below." /></span>')
+trep('>Achievement vs. Target</span>', '>Pickups achievement vs. monthly target<InfoTip text="Pickups so far \u00f7 the monthly pickups target from the targets sheet. 100% means the target is reached. ASP and retention have their own targets in the cards below." /></span>')
 trep('{fmt(pct, 1)}% of Target', '{fmt(pct, 1)}% of monthly target')
 infos = [
  ('<StatCard label="Monthly target"', "AM's pickup target for the month, from the October targets sheet."),
  ('<StatCard label="Target daily avg"', "Monthly target \u00f7 working days in the month: the pickups per working day the month needs on average."),
  ('<StatCard label={`Actual daily avg', "Pickups so far this month \u00f7 working days elapsed (Fridays excluded)."),
  ('<StatCard label="Run rate (month end)"', "Run rate = pickups so far + the current daily average \u00d7 the remaining working days: where the month ends if the pace does not change."),
- ('<StatCard label="Hit target"', "Existing and reactivated merchants whose daily average so far is at or above their own target."),
- ('<StatCard label="Didn\'t hit target"', "Existing and reactivated merchants whose daily average so far is below their own target."),
+ ('<StatCard label="Growers"', "Merchants whose average pickups per working day so far is at least 15% above the same days of last month (GR % of +15% or more). A merchant with no pickups in the same days of last month and pickups now counts as a grower."),
+ ('<StatCard label="Droppers"', "Merchants whose average pickups per working day so far is at least 15% below the same days of last month (GR % of -15% or less), and who still have pickups this month."),
+ ('<StatCard label="Stable"', "Merchants whose GR % is between -15% and +15%."),
  ('<StatCard label="Churned"', "Merchants with no pickups yet this month."),
  ('<StatCard label="New"', "Merchants that joined this month."),
 ]
@@ -168,7 +193,7 @@ hrep('function mpPct100(r, k) {', r'''function mpParseMonthly(mpack) {
 async function mpLoadPortfolio(am, amData, analysis) {
   const store = await mpLoadStore();
   const pf = store.pf && store.pf[am];
-  if (!pf) throw new Error("No merchants are assigned to " + am + " yet, so there is no portfolio to show.");
+  if (!pf && !(analysis && analysis.synthetic)) throw new Error("No merchants are assigned to " + am + " yet, so there is no portfolio to show.");
   const { monthly, daily } = mpParsePacks(pf[0], pf[1], true);
   MP_MODE = "portfolio";
   MP_MERCHANT = { id: "", name: am, segment: "", accountManager: am, joinDate: "", lastActivity: null };
@@ -262,10 +287,10 @@ hrep('  MP_MODE = "portfolio";\n', '  MP_MODE = "portfolio";\n  MP_CM = store.cm
 
 # ---- filtered group of merchants: the portfolio view built from the merchants' own packs
 hrep('async function mpLoadPortfolio(am, amData, analysis) {', 'async function mpLoadPortfolio(am, amData, analysis, subset) {')
-hrep('  const { monthly, daily } = mpParsePacks(pf[0], pf[1], true);\n  MP_MODE = "portfolio";', '  const list = subset || analysis.merchants;\n  const { monthly, daily } = subset ? mpAggregateSubset(store, subset) : mpParsePacks(pf[0], pf[1], true);\n  MP_MODE = "portfolio";')
+hrep('  const { monthly, daily } = mpParsePacks(pf[0], pf[1], true);\n  MP_MODE = "portfolio";', '  const list = subset || analysis.merchants;\n  const { monthly, daily } = (subset || !pf) ? mpAggregateSubset(store, list) : mpParsePacks(pf[0], pf[1], true);\n  MP_MODE = "portfolio";')
 hrep('  analysis.merchants.forEach((m) => {\n    const e = store.p[m.id];', '  list.forEach((m) => {\n    const e = store.p[m.id];')
 hrep('  const n = analysis.merchants.length || 1;', '  const n = list.length || 1;')
-hrep('MP_PF = { am, target: amData.target, team: amData.team || "", count: amData.base, analysis, parsed,', 'MP_PF = { am, target: amData.target, team: amData.team || "", count: list.length, total: amData.base, filtered: !!subset, analysis: subset ? mpSubsetAnalysis(subset) : analysis, parsed,')
+hrep('MP_PF = { am, target: amData.target, team: amData.team || "", count: amData.base, analysis, parsed,', 'MP_PF = { am, target: amData.target, team: amData.team || "", kind: amData.kind || "account manager", skipped: amData.skipped || 0, count: list.length, total: amData.base, filtered: !!subset, analysis: subset ? mpSubsetAnalysis(subset) : analysis, parsed,')
 hrep('// top merchants of the portfolio for one month and one field (clickable items)', r"""// Sum of the selected merchants. Additive fields are exact; DSR is exact too when weighted by pickups (its denominator is the
 // pickups of the cohort); ASR weighted by pickups is approximate (within about 1 point) for months before October.
 function mpAggregateSubset(store, merchants) {
@@ -293,8 +318,7 @@ function mpAggregateSubset(store, merchants) {
   return { monthly, daily: days || [] };
 }
 function mpSubsetAnalysis(merchants) {
-  const t = merchants.filter((m) => m.hasTarget);
-  return { merchants, hitCount: t.filter((m) => !m.missedTarget).length, missedCount: t.filter((m) => m.missedTarget).length, churnedCount: merchants.filter((m) => m.category === "Churned").length, newCount: merchants.filter((m) => m.category === "New").length };
+  return { merchants, growerCount: merchants.filter((m) => m.standing === "Grower").length, dropperCount: merchants.filter((m) => m.standing === "Dropper").length, stableCount: merchants.filter((m) => m.standing === "Stable").length, churnedCount: merchants.filter((m) => m.category === "Churned").length, newCount: merchants.filter((m) => m.category === "New").length };
 }
 
 // top merchants of the portfolio for one month and one field (clickable items)""")
@@ -313,7 +337,7 @@ tail = ('// ---- embedded profile data (generated from mart.v_merchant_monthly_w
         '// {"p": {business_id: [monthlyPack, dailyPack]}, "x": {...}, "pf": {account_manager: [...]}, "cm": {current-month parcel issues, tickets, failed attempts}}\n'
         'const MP_DATA_B64 = __P.store;\n')
 
-out = tb['s'] + '\n' + hb['s'] + R('m1_prims.jsx') + R('m2_overview.jsx') + R('m5_compare.jsx') + R('m6_cm.jsx') + R('m3_issues.jsx') + R('m7_org.jsx') + R('m8_lead.jsx') + R('m9_auth.jsx') + R('m4_screens.jsx') + '\n' + tail
+out = tb['s'] + '\n' + hb['s'] + R('m1_prims.jsx') + R('m2_overview.jsx') + R('m5_compare.jsx') + R('m6_cm.jsx') + R('m3_issues.jsx') + R('m7_org.jsx') + R('m8_lead.jsx') + R('m10_daily.jsx') + R('m9_auth.jsx') + R('m4_screens.jsx') + '\n' + tail
 # the window labels in the source say "Oct 1-4" / "Sep 1-4": fill them with the days of the data (ORG.days)
 _N = _json.load(open('../data/org_final.json', encoding='utf-8'))['days']
 out = out.replace('Oct 1\u20134', 'Oct 1\u2013%d' % _N).replace('Sep 1\u20134', 'Sep 1\u2013%d' % _N)

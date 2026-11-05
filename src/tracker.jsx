@@ -94,10 +94,14 @@ function analyzeAm(amData, workingDays) {
       const momDelta = m.mtdAvgDaily - pmtdAvgDaily;
       const momPct = pmtdAvgDaily > 0 ? (momDelta / pmtdAvgDaily) * 100 : null;
       const runRate = m.mtd + m.mtdAvgDaily * remainingDays;
+      // GR % decides the status: +15% or more = Grower, -15% or less = Dropper, in between = Stable. "standing" also holds New and Churned, so the five groups add up to the portfolio.
+      const growthStatusG = momPct == null ? null : momPct >= GROWTH_THRESHOLD_PCT ? "Grower" : momPct <= -GROWTH_THRESHOLD_PCT ? "Dropper" : "Stable";
+      const standing = category === "New" ? "New" : category === "Churned" ? "Churned" : growthStatusG || "Grower";
       return {
         ...m,
         merchantTarget, hasAug, hasTarget, deviation, contribution, category, missedTarget,
-        gapContributionPct, growthStatus, growthPct,
+        gapContributionPct,
+        growthStatus: growthStatusG, growthPct: momPct, standing,
         pmtdAvgDaily, pmtdTotal: m.ptd || 0, momDelta, momPct, runRate,
       };
     });
@@ -128,8 +132,9 @@ function analyzeAm(amData, workingDays) {
     const newStats = byStatus("New");
     const reactivationStats = byStatus("Reactivation");
     const churnedStats = byStatus("Churned");
-    const hitCount = targetedMerchants.filter((m) => !m.missedTarget).length;
-    const missedCount = targetedMerchants.filter((m) => m.missedTarget).length;
+    const growerCount = merchants.filter((m) => m.standing === "Grower").length;
+    const dropperCount = merchants.filter((m) => m.standing === "Dropper").length;
+    const stableCount = merchants.filter((m) => m.standing === "Stable").length;
     const churnedCount = churnedStats.count;
     const newCount = newStats.count;
 
@@ -146,7 +151,7 @@ function analyzeAm(amData, workingDays) {
       days, target, base, avgDailyTarget, thresholdDailyTarget: thresholdTotal,
       merchants, totalActualMtdDaily, totalActualMtdPickups, achievementPct, targetProgressPct, remainingDaily,
       elapsedDays, remainingDays, estimatedTotal, estimatedPct, bottomUpDailyTarget,
-      existingStats, newStats, reactivationStats, churnedStats, hitCount, missedCount, churnedCount, newCount,
+      existingStats, newStats, reactivationStats, churnedStats, growerCount, dropperCount, stableCount, churnedCount, newCount,
       gapToThresholdPct, gapToThresholdAbs, missedBreakdown,
     };
 }
@@ -157,6 +162,8 @@ export default function TargetTracker({ session: hostSession, onSignOut } = {}) 
   const [sortKey, setSortKey] = useState("mtdAvgDaily");
   const [sortDir, setSortDir] = useState("desc");
   const [expandedId, setExpandedId] = useState(null);
+  const [fid, setFid] = useState(""); const [fname, setFname] = useState(""); // business ID / business name search of the merchant table
+  const [cmpView, setCmpView] = useState("prev"); // pickups table: "prev" = against last month (PMTD), "target" = against each merchant's own target
   const [screen, setScreen] = useState("tracker"); // "tracker" | "profile" — in-app navigation, no separate tab/page
   const [selectedMerchant, setSelectedMerchant] = useState(null);
   const openMerchantProfile = (m) => { setSelectedMerchant({ ...m, am: amName }); setScreen("profile"); };
@@ -165,13 +172,17 @@ export default function TargetTracker({ session: hostSession, onSignOut } = {}) 
 
   const analysis = useMemo(() => analyzeAm(amData, workingDays), [amData, workingDays]);
 
-  const sortedMerchants = useMemo(() => {
+  const sortedAll = useMemo(() => {
     const arr = [...analysis.merchants];
     const dir = sortDir === "asc" ? 1 : -1;
     const num = (v) => (v === null || v === undefined ? -Infinity : v);
     arr.sort((a, b) => {
       if (sortKey === "name") return dir * a.name.localeCompare(b.name);
       if (sortKey === "category") return dir * a.category.localeCompare(b.category);
+      if (sortKey === "target") return dir * (num(a.merchantTarget) - num(b.merchantTarget));
+      if (sortKey === "tDelta") return dir * (num(a.deviation) - num(b.deviation));
+      if (sortKey === "contribution") return dir * (num(a.contribution) - num(b.contribution));
+      if (sortKey === "gapContribution") return dir * (num(a.gapContributionPct) - num(b.gapContributionPct));
       if (sortKey === "delta") return dir * (num(a.momDelta) - num(b.momDelta));
       if (sortKey === "momPct") return dir * (num(a.momPct) - num(b.momPct));
       if (sortKey === "pmtdAvgDaily") return dir * (a.pmtdAvgDaily - b.pmtdAvgDaily);
@@ -183,6 +194,7 @@ export default function TargetTracker({ session: hostSession, onSignOut } = {}) 
     return arr;
   }, [analysis.merchants, sortKey, sortDir]);
 
+  const sortedMerchants = sortedAll.filter((m) => (!fid.trim() || String(m.id).toLowerCase().includes(fid.trim().toLowerCase())) && (!fname.trim() || String(m.name).toLowerCase().includes(fname.trim().toLowerCase())));
   const onSort = (key) => {
     if (sortKey === key) setSortDir(sortDir === "asc" ? "desc" : "asc");
     else { setSortKey(key); setSortDir("desc"); }
@@ -230,18 +242,19 @@ export default function TargetTracker({ session: hostSession, onSignOut } = {}) 
 
         {/* Row 1: headline stats */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 22 }}>
-          <StatCard label="Monthly target" value={fmt(analysis.target)} sub="pickups (from the targets sheet)" />
+          <StatCard label="Monthly target" value={fmt(analysis.target)} sub="" />
           <StatCard label="Target daily avg" value={fmt(analysis.avgDailyTarget)} sub={"monthly target \u00f7 working days"} />
           <StatCard label={`Actual daily avg (MTD, ${analysis.elapsedDays}d)`} value={fmt(analysis.totalActualMtdDaily)} sub="pickups / day" />
           <StatCard label="Run rate (month end)" value={`\u2248 ${fmt(analysis.estimatedTotal)}`} sub={`${fmt(analysis.estimatedPct, 1)}% of monthly target`}
             accent={analysis.estimatedPct >= 100 ? COLORS.teal : COLORS.coral} />
         </div>
 
-        {/* Hit / didn't hit target */}
-        <SectionLabel>Merchants &middot; hit, missed, churned, new (adds up to {amData.base})</SectionLabel>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 22 }}>
-          <StatCard label="Hit target" value={analysis.hitCount} sub={`${fmt((analysis.hitCount / (analysis.base || 1)) * 100, 0)}% of merchants`} accent={COLORS.teal} />
-          <StatCard label="Didn't hit target" value={analysis.missedCount} sub={`${fmt((analysis.missedCount / (analysis.base || 1)) * 100, 0)}% of merchants`} accent={COLORS.coral} />
+        {/* Growers / droppers / stable by GR % */}
+        <SectionLabel>Merchants &middot; growers, droppers, stable, churned, new (adds up to {amData.base})</SectionLabel>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 22 }}>
+          <StatCard label="Growers" value={analysis.growerCount} sub={`${fmt((analysis.growerCount / (analysis.base || 1)) * 100, 0)}% of merchants \u00b7 GR +15% or more`} accent={COLORS.teal} />
+          <StatCard label="Droppers" value={analysis.dropperCount} sub={`${fmt((analysis.dropperCount / (analysis.base || 1)) * 100, 0)}% of merchants \u00b7 GR -15% or less`} accent={COLORS.coral} />
+          <StatCard label="Stable" value={analysis.stableCount} sub={`${fmt((analysis.stableCount / (analysis.base || 1)) * 100, 0)}% of merchants \u00b7 GR between -15% and +15%`} accent={COLORS.blue} />
           <StatCard label="Churned" value={analysis.churnedCount} sub={`${fmt((analysis.churnedCount / (analysis.base || 1)) * 100, 0)}% of merchants \u00b7 no pickups this month yet`} accent={COLORS.slate} />
           <StatCard label="New" value={analysis.newCount} sub={`${fmt((analysis.newCount / (analysis.base || 1)) * 100, 0)}% of merchants \u00b7 joined this month`} accent={COLORS.purple} />
         </div>
@@ -251,7 +264,7 @@ export default function TargetTracker({ session: hostSession, onSignOut } = {}) 
           <div style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "14px 16px", borderRadius: 10, marginBottom: 22, background: COLORS.coralDim, border: `1px solid ${COLORS.coral}` }}>
             <span style={{ fontSize: 20, fontWeight: 700, fontFamily: "'IBM Plex Mono', monospace", color: COLORS.coral }}>{fmt(analysis.gapToThresholdPct, 1)}%</span>
             <span style={{ fontSize: 13, color: COLORS.textMuted }}>
-              short of the monthly target ({fmt(analysis.gapToThresholdAbs)} pickups still needed) &mdash; currently at {fmt(analysis.targetProgressPct, 1)}% of the monthly target; the table below shows how each merchant moves against the same days of last month.
+              short of the monthly target ({fmt(analysis.gapToThresholdAbs)} pickups still needed) &mdash; currently at {fmt(analysis.targetProgressPct, 1)}% of the monthly target; {cmpView === "target" ? "the table below shows how much each merchant contributes." : "the table below shows how each merchant moves against the same days of last month."}
             </span>
           </div>
         )}
@@ -264,6 +277,13 @@ export default function TargetTracker({ session: hostSession, onSignOut } = {}) 
               <thead>
                 <tr style={{ position: "sticky", top: 0, background: "#F0F2F6", zIndex: 1 }}>
                   <Th onClick={() => onSort("name")} active={sortKey === "name"} dir={sortDir}>Merchant</Th>
+                  {cmpView === "target" ? (<>
+                  <Th onClick={() => onSort("target")} active={sortKey === "target"} dir={sortDir} align="right">Merchant weight</Th>
+                  <Th onClick={() => onSort("mtdAvgDaily")} active={sortKey === "mtdAvgDaily"} dir={sortDir} align="right">MTD avg daily</Th>
+                  <Th onClick={() => onSort("mtd")} active={sortKey === "mtd"} dir={sortDir} align="right">MTD total volume</Th>
+                  <Th onClick={() => onSort("tDelta")} active={sortKey === "tDelta"} dir={sortDir} align="right">Delta</Th>
+                  <Th onClick={() => onSort("contribution")} active={sortKey === "contribution"} dir={sortDir} align="right">Achievement %</Th>
+                  </>) : (<>
                   <Th onClick={() => onSort("mtdAvgDaily")} active={sortKey === "mtdAvgDaily"} dir={sortDir} align="right">MTD avg daily</Th>
                   <Th onClick={() => onSort("pmtdAvgDaily")} active={sortKey === "pmtdAvgDaily"} dir={sortDir} align="right">PMTD avg daily</Th>
                   <Th onClick={() => onSort("delta")} active={sortKey === "delta"} dir={sortDir} align="right">Delta</Th>
@@ -271,6 +291,7 @@ export default function TargetTracker({ session: hostSession, onSignOut } = {}) 
                   <Th onClick={() => onSort("mtd")} active={sortKey === "mtd"} dir={sortDir} align="right">MTD total volume</Th>
                   <Th onClick={() => onSort("pmtdTotal")} active={sortKey === "pmtdTotal"} dir={sortDir} align="right">PMTD total volume</Th>
                   <Th onClick={() => onSort("runRate")} active={sortKey === "runRate"} dir={sortDir} align="right">Run rate</Th>
+                  </>)}
                   <Th onClick={() => onSort("category")} active={sortKey === "category"} dir={sortDir} align="right">Status</Th>
                 </tr>
               </thead>
@@ -291,6 +312,13 @@ export default function TargetTracker({ session: hostSession, onSignOut } = {}) 
                           {!m.hasAug && <span style={{ fontSize: 9.5, color: COLORS.textFaint }}>(no Sep baseline)</span>}
                         </span>
                       </td>
+                      {cmpView === "target" ? (<>
+                      <td style={{ padding: "9px 14px", textAlign: "right", fontFamily: "'IBM Plex Mono', monospace", color: COLORS.textMuted }}>{m.hasTarget ? fmt(m.merchantTarget, 1) : "\u2014"}</td>
+                      <td style={{ padding: "9px 14px", textAlign: "right", fontFamily: "'IBM Plex Mono', monospace" }}>{fmt(m.mtdAvgDaily, 1)}</td>
+                      <td style={{ padding: "9px 14px", textAlign: "right", fontFamily: "'IBM Plex Mono', monospace", color: COLORS.textMuted }}>{fmt(m.mtd)}</td>
+                      <td style={{ padding: "9px 14px", textAlign: "right", fontFamily: "'IBM Plex Mono', monospace", color: !m.hasTarget ? COLORS.textFaint : m.deviation >= 0 ? COLORS.teal : COLORS.coral }}>{m.hasTarget ? `${m.deviation >= 0 ? "+" : ""}${fmt(m.deviation, 1)}` : "\u2014"}</td>
+                      <td style={{ padding: "9px 14px", textAlign: "right", fontFamily: "'IBM Plex Mono', monospace", color: COLORS.textMuted }}>{m.hasTarget ? `${fmt(m.contribution * 100, 0)}%` : "\u2014"}</td>
+                      </>) : (<>
                       <td style={{ padding: "9px 14px", textAlign: "right", fontFamily: "'IBM Plex Mono', monospace" }}>{fmt(m.mtdAvgDaily, 1)}</td>
                       <td style={{ padding: "9px 14px", textAlign: "right", fontFamily: "'IBM Plex Mono', monospace", color: COLORS.textMuted }}>{fmt(m.pmtdAvgDaily, 1)}</td>
                       <td style={{ padding: "9px 14px", textAlign: "right", fontFamily: "'IBM Plex Mono', monospace", color: m.pmtdAvgDaily <= 0 && m.mtdAvgDaily <= 0 ? COLORS.textFaint : m.momDelta >= 0 ? COLORS.teal : COLORS.coral }}>{m.pmtdAvgDaily <= 0 && m.mtdAvgDaily <= 0 ? "\u2014" : `${m.momDelta >= 0 ? "+" : ""}${fmt(m.momDelta, 1)}`}</td>
@@ -298,11 +326,12 @@ export default function TargetTracker({ session: hostSession, onSignOut } = {}) 
                       <td style={{ padding: "9px 14px", textAlign: "right", fontFamily: "'IBM Plex Mono', monospace", color: COLORS.textMuted }}>{fmt(m.mtd)}</td>
                       <td style={{ padding: "9px 14px", textAlign: "right", fontFamily: "'IBM Plex Mono', monospace", color: COLORS.textMuted }}>{fmt(m.pmtdTotal)}</td>
                       <td style={{ padding: "9px 14px", textAlign: "right", fontFamily: "'IBM Plex Mono', monospace", color: COLORS.textMuted }}>{fmt(m.runRate, 0)}</td>
+                      </>)}
                       <td style={{ padding: "9px 14px", textAlign: "right" }}><CategoryBadge category={m.category} /></td>
                     </tr>
                     {expandedId === m.id && (
                       <tr>
-                        <td colSpan={9} style={{ padding: 0, borderTop: `1px solid ${COLORS.panelBorder}` }}>
+                        <td colSpan={cmpView === "target" ? 8 : 9} style={{ padding: 0, borderTop: `1px solid ${COLORS.panelBorder}` }}>
                           <MerchantDrilldown merchant={m} weight={m.merchantTarget} onOpenProfile={openMerchantProfile} />
                         </td>
                       </tr>
@@ -317,8 +346,9 @@ export default function TargetTracker({ session: hostSession, onSignOut } = {}) 
         <div style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12, color: COLORS.textFaint, padding: "10px 4px", lineHeight: 1.5 }}>
           <Info size={14} style={{ marginTop: 2, flexShrink: 0 }} />
           <span>
+            {cmpView === "target" ? "Merchant weight = the daily average this merchant is expected to contribute to the portfolio target: (September \u00d7 1.60) \u00f7 working days. Delta = MTD avg daily \u2212 merchant weight; Achievement % = MTD avg daily \u00f7 merchant weight. Weights are calculated per merchant, so they do not add up to the AM's official target. New and Churned merchants have no weight." : null}{cmpView === "target" ? null : <>
             PMTD = the same days of last month (days 1&ndash;{DATA.ptdDays}); avg daily = pickups &divide; working days of that period. Delta = MTD avg daily &minus; PMTD avg daily; GR % = Delta &divide; PMTD avg daily (no GR % when the merchant had no pickups in that period). MTD total volume is compared with PMTD total volume. Run rate = MTD pickups + MTD avg daily &times; the remaining working days.
-          </span>
+          </>}</span>
         </div>
       </div>
     </div>

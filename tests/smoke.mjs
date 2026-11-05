@@ -94,7 +94,7 @@ check('hero: volume / revenue / active merchants / compensation compare Oct 1–
 check('portfolio hero values match the independent calculation (volume, active merchants, DSR, compensation)', p.includes(relTxt(XP.pf.td.vol, XP.pf.ptd.vol)) && p.includes(relTxt(XP.pf.td.active, XP.pf.ptd.active)) && p.includes(ptsTxt(XP.pf.dsr_sep, XP.pf.dsr_aug)) && p.includes(ptsTxt(XP.pf.asr_sep, XP.pf.asr_aug)) && p.includes(relTxt(XP.pf.td.comp, XP.pf.ptd.comp)), [relTxt(XP.pf.td.vol, XP.pf.ptd.vol), relTxt(XP.pf.td.active, XP.pf.ptd.active), ptsTxt(XP.pf.dsr_sep, XP.pf.dsr_aug)].join(' | '));
 check('seasonality is Coming soon in the portfolio flags', /Seasonality\s*Coming soon/.test(p) && !/Peaks in|derived/.test(p));
 check('portfolio flags: Merchants / Sub-accounts / Websites known / FB ads Coming soon', ['Merchants', 'Sub-accounts', 'Websites known', 'Coming soon'].every((s) => p.includes(s)));
-const titles = ['Volume', 'Revenue', 'Active merchants', 'ASP', 'Compensation', 'DSR', 'ASR', 'Lost & damaged', 'Top merchants', 'Where merchants stand now'];
+const titles = ['Volume', 'Revenue', 'Active merchants', 'ASP', 'Compensation', 'DSR', 'ASR', 'Lost parcels', 'Damaged parcels', 'Top merchants', 'Where merchants stand now'];
 check('short chart titles present', titles.every((s) => p.includes(s)));
 check('no long old titles / no pie / no zones in overview', !/Operational issues trend|volume share by business line|DSR \/ ASR trend|delivery zones/i.test(p));
 check('story insight lines present (vs Aug / peak)', /vs (Aug|Sep)/.test(p) && /peak/.test(p));
@@ -158,7 +158,7 @@ await cw('Month'); await cw('Previous month');
 if (metricSel) { setSel(metricSel, 'active_merchants'); await sleep(150); }
 check('portfolio comparison: active merchants Oct 1–15 (45) vs Sep 1–15 (42), current value shown first', txt().includes('Oct 1–15 · current') && txt().includes(String(XP.pf.td.active)) && txt().includes(String(XP.pf.ptd.active)) && txt().includes('not with the full month'));
 check('comparison shows the new delta card + pair table with colours', txt().includes('All metrics, same-length periods'));
-for (const t of ['Issues', 'Operational', 'CX', 'Merchants & customers', 'Opportunities']) await cw(t);
+for (const t of ['Issues', 'Operational', 'CX', 'Merchants & customers']) await cw(t);
 await cw('Issues'); await cw('Operational');
 p = txt();
 check('portfolio issues: top merchants per issue', p.includes('Which merchants'));
@@ -167,9 +167,24 @@ check('portfolio: long list is paged (RTO shows 50, rest behind Show more)', Arr
 await cw('CX'); p = txt();
 check('portfolio CX: real tickets (' + XC.pf.tickets + ') from public.freshdesk_tickets_enriched, merchant-link caveat shown', p.includes(n0(XC.pf.tickets)) && p.includes('Only about half of all tickets') && !/coming soon/i.test(p.slice(p.indexOf('Tickets'))), String(XC.pf.tickets));
 await cw('Merchants & customers'); p = txt();
-check('portfolio failed attempts: total / customer / merchant match the independent pull', p.includes(n0(XC.pf.att_total)) && p.includes(n0(XC.pf.att.Customer)) && p.includes(n0(XC.pf.att.Merchant)), [XC.pf.att_total, XC.pf.att.Customer, XC.pf.att.Merchant].join('/'));
-await cw('Opportunities');
-check('portfolio opportunities: VAS + zones', txt().includes('VAS revenue by type') && txt().includes('Where parcels go'));
+check('portfolio: Merchants & customers is a "to be added" placeholder', p.includes('Merchants & customers · to be added') && !p.includes('Latest failed attempts'));
+check('portfolio overview has no Opportunities tab; Merchants & customers is a main tab next to Issues', !btn('Opportunities') && !!btn('Merchants & customers') && !!btn('Analysis') && !!btn('Debugger') && !!btn('Issues'));
+await cw('Profile Overview'); await cw('Overall overview'); await waitFor(() => txt().includes('Who drives this portfolio'));
+{ const t0 = txt();
+  check('trends: Active merchants sits beside Pickups per active merchant (two cards in one row)', t0.includes('Pickups per active merchant') && t0.indexOf('Active merchants', t0.indexOf('Growth')) < t0.indexOf('Pickups per active merchant'));
+  check('trends: Lost and damaged are two separate trends; no combined card', t0.includes('Lost parcels') && t0.includes('Damaged parcels') && !t0.includes('Lost & damaged'));
+  check('trends: DSR shows the 65% low line, the average line and how many periods are at or below it', t0.includes('Low ≤65%') && /No period at or below 65%|periods at or below 65%/.test(t0) && /avg \d+\.\d%/.test(t0));
+  click(btn('Shipping & VAS')); await sleep(100);
+  check('trends: ASP can switch from Total to Shipping & VAS', txt().includes('Shipping (EGP / pickup)') && txt().includes('VAS (EGP / pickup)'));
+  click(btn('Total')); await sleep(100); check('trends: ASP Total view has no separate shipping chart', !txt().includes('Shipping (EGP / pickup)'));
+  click(btn('Share of portfolio')); await sleep(100);
+  check('trends: Active merchants can switch to share of the portfolio (%)', /Active merchants[\s\S]{0,200}%/.test(txt()));
+  click(btn('Per 1,000 pickups')); await sleep(100);
+  check('trends: Lost / Damaged can switch to per 1,000 pickups', txt().includes('Per 1,000 pickups'));
+}
+await cw('Issues'); await cw('Operational');
+{ const t1 = txt(); check('issues trends: five trends (fake, RTO, lost, damaged, compensation) with Daily / Weekly / Monthly buttons', ['Fake attempts', 'RTO without attempt', 'Lost parcels', 'Damaged parcels', 'Compensation (EGP)'].every((x) => t1.includes(x)) && !!btn('Weekly') && !t1.includes('Lost & damaged'));
+  click(btn('Weekly')); await sleep(150); check('issues trends: Weekly view renders without errors', errors.length === 0 && txt().includes('Weekly view starts on Sep 1'), errors.slice(0, 1).join()); click(btn('Monthly')); await sleep(80); }
 check('portfolio: no runtime errors so far', errors.length === 0, errors.slice(0, 2).join(' | '));
 
 // click-through: portfolio -> merchant -> back to portfolio
@@ -195,10 +210,10 @@ check('merchant: website taager.com from public.businesses', p.includes('taager.
 check('merchant: FB ads = Coming soon', /FB ads\s*Coming soon/.test(p));
 check('merchant: seasonality = Coming soon (no derived value)', /Seasonality\s*Coming soon/.test(p) && !/Peaks in|derived/.test(p));
 check('merchant: Trend Hub is a main account', /Account\s*Main account/.test(p));
-check('merchant: short chart titles + insights', ['Volume', 'Revenue', 'ASP', 'Compensation', 'DSR', 'ASR', 'Lost & damaged'].every((s) => p.includes(s)) && /vs Aug/.test(p));
+check('merchant: short chart titles + insights', ['Volume', 'Revenue', 'ASP', 'Compensation', 'DSR', 'ASR', 'Lost parcels', 'Damaged parcels'].every((s) => p.includes(s)) && /vs Aug/.test(p));
 check('merchant: info icons (>= 25)', infoCount() >= 25, String(infoCount()));
 check('merchant: no month dropdown, calendar range instead', document.querySelectorAll('input[type="date"]').length === 2);
-for (const t of ['Comparison', 'Current month overview', 'Overall overview', 'Issues', 'CX', 'Merchants & customers', 'Operational', 'Opportunities']) await cw(t);
+for (const t of ['Comparison', 'Current month overview', 'Overall overview', 'Issues', 'CX', 'Operational', 'Merchants & customers', 'Opportunities']) await cw(t);
 check('merchant: sample tabs still render', errors.length === 0, errors.slice(0, 2).join(' | '));
 await cw('Issues'); await cw('Operational'); p = txt();
 check('merchant parcel tables: real counts (Trend Hub) and no sample wording', [['Fake attempts', XC.th.F], ['RTO without attempt', XC.th.R], ['Lost parcels', XC.th.L], ['Damaged parcels', XC.th.D], ['Compensation', XC.th.C]].every(([t, n]) => p.includes(t + ' (' + n0(n) + ')')) && p.includes(XC.th_first_L[0]) && !/SAMPLE|sample data/i.test(p), [XC.th.F, XC.th.R, XC.th.L, XC.th.D, XC.th.C].join('/'));
@@ -211,8 +226,8 @@ check('merchant parcel tables: real counts (Trend Hub) and no sample wording', [
 await cw('CX'); p = txt();
 check('merchant CX: ' + XC.th.tickets + ' real tickets, opened / pending / compensation tables', p.includes(n0(XC.th.tickets)) && p.includes('Opened tickets') && p.includes('Pending tickets') && p.includes('Tickets with compensation') && !/SAMPLE|sample data/i.test(p), String(XC.th.tickets));
 await cw('Merchants & customers'); p = txt();
-check('merchant failed attempts: total / customer / merchant / address-phone match the independent pull', p.includes(n0(XC.th.att_total)) && p.includes(n0(XC.th.att.Customer)) && p.includes(n0(XC.th.att.Merchant)) && p.includes(n0(XC.th.att['Address / phone data'])), [XC.th.att_total, XC.th.att.Customer, XC.th.att.Merchant].join('/'));
-check('failed attempts: latest-10 table + side grouping explained', p.includes('Latest failed attempts') && p.includes('latest 10'));
+check('merchant: Merchants & customers is a "to be added" placeholder', p.includes('Merchants & customers · to be added') && !p.includes('Latest failed attempts'));
+
 await cw('Profile Overview'); await cw('Overall overview');
 p = txt();
 check('merchant hero: volume / DSR / compensation vs Sep 1–15 match the independent calculation', p.includes(relTxt(XP.th.td.vol, XP.th.ptd.vol)) && p.includes(ptsTxt(XP.th.dsr_sep, XP.th.dsr_aug)) && p.includes(ptsTxt(XP.th.asr_sep, XP.th.asr_aug)) && p.includes(relTxt(XP.th.td.comp, XP.th.ptd.comp)), [relTxt(XP.th.td.vol, XP.th.ptd.vol), ptsTxt(XP.th.dsr_sep, XP.th.dsr_aug), relTxt(XP.th.td.comp, XP.th.ptd.comp)].join(' | '));
@@ -448,7 +463,7 @@ check('achievement bar and target card say they are about PICKUPS', txt().includ
   check('sorted by ASP Gap Contribution ascending: ' + XA.rows[0].name + ' first', rowsT[0][0] === XA.rows[0].name && Number(rowsT[0][4].replace('−', '-').replace('+', '')) <= Number(rowsT[1][4].replace('−', '-').replace('+', '')), rowsT[0].join(' | '));
   const T = XA.T, thx = XA.rows.find((r) => r.id === 'ImbeR25m9'); const r = Array.from(document.querySelectorAll('tbody tr')).find((x) => x.querySelectorAll('td').length === 10 && x.textContent.includes('Trend Hub'));
   const cells = Array.from(r.querySelectorAll('td')).map((c) => c.textContent.trim());
-  check('Trend Hub row matches the independent spec calculation (parcels, ASP, share, gap contribution, revenue gap, group)', cells[1] === n0(thx.dl) && cells[2] === tl(thx.asp, 2) && cells[3] === tl(thx.share * 100, 2) + '%' && cells[4] === sg(thx.gapc, 3) && cells[5] === sg(thx.revgap, 0) && cells[6] === thx.group, cells.slice(0, 7).join(' | '));
+  check('Trend Hub row matches the independent spec calculation (parcels, ASP, share, gap contribution, revenue gap, group)', cells[1] === n0(thx.dl) && cells[2] === tl(thx.asp, 2) && cells[3] === tl(thx.share * 100, 2) + '%' && cells[4] === sg(thx.gapc, 2) && cells[5] === sg(thx.revgap, 0) && cells[6] === thx.group, cells.slice(0, 7).join(' | '));
   const sumG = rowsT.reduce((s2, c) => s2 + Number(c[4].replace('−', '-').replace('+', '')), 0);
   check('sum of ASP Gap Contributions = Portfolio ASP − Target (' + XA.gap.toFixed(3) + ')', Math.abs(sumG - XA.gap) < 0.03, sumG.toFixed(3));
   check('summary: total revenue, parcels, portfolio ASP and net gap (4 cards)', p.includes(n0(XA.REV)) && p.includes(n0(XA.DL)) && p.includes(tl(XA.P, 2)) && p.includes(sg(XA.gap, 2)), tl(XA.P, 2));
@@ -565,9 +580,9 @@ check('ASP view has no Not-eligible section any more', !txt().includes('Not elig
     check('Doha Ahmed: ' + n0(pk) + ' pickups = ' + tl3(pk / d.target * 100, 1) + '% of the monthly target ' + n0(d.target) + ' on the bar and in the card: one number, not two', txt().includes(tl3(pk / d.target * 100, 1) + '% of monthly target') && txt().includes(tl3(pk / d.target * 100, 1) + '% of the monthly target (' + n0(d.target) + ')') && !/% of Target/.test(txt())); }
   { const cards = Array.from(document.querySelectorAll('div')).filter((x) => x.textContent.startsWith('ASP') || x.textContent.startsWith('Retention') || x.textContent.startsWith('Current total achievement vs target'));
     const pos = (t) => txt().indexOf(t);
-    check('the achievement card sits in the ASP / Retention row, before the Working days input; the old card is gone', pos('ASP') < pos('Retention') && pos('Retention') < pos('Current total achievement vs target') && pos('Current total achievement vs target') < pos('Working days (excl. Fridays)') && (txt().match(/Current total achievement/g) || []).length === 1); }
+    check('the achievement card comes first, then ASP and Retention, before the Working days input; the old card is gone', pos('Current total achievement vs target') < pos('ASP') && pos('ASP') < pos('Retention') && pos('Retention') < pos('Working days (excl. Fridays)') && (txt().match(/Current total achievement/g) || []).length === 1); }
   check('AM tracker: no literal \\u escape sequences on screen', !/\\u[0-9a-fA-F]{4}/.test(txt()));
-check('Monthly target card shows the sheet target; no card or sentence about a separate Target', txt().includes('Monthly pickups target') && txt().includes('pickups (from the targets sheet)') && !txt().includes('to reach Target'));
+check('Monthly target card shows the sheet target; no card or sentence about a separate Target', txt().includes('Monthly pickups target') && !txt().includes('(from the targets sheet)') && !txt().includes('to reach Target'));
   // sales reps: new pickups card = actual / target as given
   click(btn('Sales')); await sleep(150);
   let badS = [], nS = 0;
@@ -623,6 +638,94 @@ if (AUTH_ON) {
   await signOutUI(); await signInAs('Sameh Shaheen');
   check('signing in again as the VP restores the full view', pillsNow().length === 5);
   check('permissions block: no runtime errors', errors.length === 0, errors.slice(0, 2).join(' | '));
+}
+
+
+// ---- Daily analysis: opens from every level, numbers match an independent calculation, interactive
+{
+  const zlib = await import('node:zlib');
+  const ST = JSON.parse(zlib.gunzipSync(Buffer.from(PAYLOAD.store, 'base64')).toString());
+  const SEGS = ['Key-Account', 'Growth-Fashion', 'Growth-Cosmetics', 'Growth-General-Trade', 'Startups'];
+  const all = []; Object.values(PAYLOAD.data.ams).forEach((a) => a.merchants.forEach((m) => all.push(m)));
+  const inSeg = all.filter((m) => SEGS.includes(m.seg) && ST.p[m.id] && ST.p[m.id][1]);
+  const dayVal = (id, k) => Number(ST.p[id][1].split(';')[k].split(',')[3]) || 0;
+  const lastK = ST.p[inSeg[0].id][1].split(';').length - 1;
+  const expVol = inSeg.reduce((s, m) => s + dayVal(m.id, lastK), 0);
+  const pres = new Set(inSeg.map((m) => m.id)), pidOf = (i) => (ST.x[i] && ST.x[i].pid) || null;
+  const rootOf = (i) => { const seen = [i]; let c = i; for (;;) { const p = pidOf(c); if (!p || p === c || !pres.has(p)) return c; const at = seen.indexOf(p); if (at >= 0) return seen.slice(at).sort()[0]; seen.push(p); c = p; } };
+  const expActive = new Set(inSeg.map((m) => rootOf(m.id))).size;
+  const card = (label) => { const c = Array.from(document.querySelectorAll('div')).find((d) => d.children.length >= 2 && d.firstElementChild && d.firstElementChild.textContent.trim().toLowerCase().startsWith(label.toLowerCase()) && d.textContent.length < 160); return c ? c.textContent : ''; };
+  if (AUTH_ON) { await signOutUI(); await signInAs('Sameh Shaheen'); } else { if (btn('← Back to portfolio overview') || btn('← Back to Target Tracker')) await backToTracker(); click(btn('VP')); await sleep(200); }
+  check('VP view has a Daily analysis button', !!btn('Daily analysis →'));
+  click(btn('Daily analysis →')); await waitFor(() => /What stands out/.test(txt()), 8000);
+  const dt = txt();
+  check('Daily analysis opens for the VP with the insight box, segment table and merchant lists', /What stands out/.test(dt) && /By segment/.test(dt) && /Absent · /.test(dt) && /Droppers · /.test(dt) && /Growers · /.test(dt) && /On risk · /.test(dt));
+  check('Daily analysis total volume = independent sum of the last day (' + expVol + ')', card('Total volume').replace(/[^0-9]/g, '').startsWith(String(expVol)) || card('Total volume').includes(expVol.toLocaleString('en-US')), card('Total volume'));
+  check('Daily analysis accounts = roster merchants of the 5 segments minus folded sub-accounts (' + expActive + ')', dt.includes(expActive.toLocaleString('en-US') + ' accounts'), (dt.match(/[\d,]+ accounts in/) || [''])[0]);
+  check('Daily analysis shows all five segments and a Total row', ['Key Accounts', 'Growth Fashion', 'Growth Cosmetics', 'Growth General Trade', 'Startups', 'Total'].every((x) => dt.includes(x)));
+  check('Daily analysis: no literal \\u sequences', !/\\u[0-9a-fA-F]{4}/.test(dt));
+  check('Daily analysis lists show at most 10 rows until "Show all"', document.querySelectorAll('tbody')[1].querySelectorAll('tr').length <= 10);
+  { const sa = Array.from(document.querySelectorAll('button')).find((b) => b.textContent.trim().startsWith('Show all ')); if (sa) { click(sa); await sleep(100); } check('Daily analysis: Show all expands the list', !sa || document.querySelectorAll('tbody')[1].querySelectorAll('tr').length > 10); }
+  const dayOpts = Array.from(document.querySelector('select[aria-label="Analysed day"]').options).map((o) => o.textContent);
+  check('Daily analysis day picker lists the working days of this month without Fridays', dayOpts.length >= 10 && !dayOpts.some((o) => o.startsWith('Fri ')), dayOpts.slice(0, 3).join(','));
+  setSel(document.querySelector('select[aria-label="Analysed day"]'), String(lastK - 2)); await sleep(150);
+  check('Daily analysis changes the analysed day', txt() !== dt);
+  click(btn('Droppers · ' + (txt().match(/Droppers · ([\d,]+)/) || [])[1])); await sleep(100);
+  check('Daily analysis tab switch works without errors', errors.length === 0, errors.slice(0, 2).join(' | '));
+  click(btn('← Back')); await sleep(200);
+  check('Back from Daily analysis returns to the VP view', /Where the heads stand/.test(txt()));
+  // every level has the button and opens
+  click(btn('Heads')); await sleep(200); click(btn('Daily analysis →')); await waitFor(() => /What stands out/.test(txt()), 8000);
+  check('Heads: Daily analysis opens for the selected team', /Head · /.test(txt()) && /What stands out/.test(txt()));
+  click(btn('← Back')); await sleep(200);
+  click(btn('Team leaders')); await sleep(200); click(btn('Daily analysis →')); await waitFor(() => /What stands out/.test(txt()), 8000);
+  check('Team leaders: Daily analysis opens', /Team leader · /.test(txt()));
+  click(btn('← Back')); await sleep(200);
+  click(btn('Sales')); await sleep(200); click(btn('Daily analysis →')); await waitFor(() => /What stands out|no merchants of the target segments/.test(txt()), 8000);
+  check('Sales: Daily analysis opens', /sales · /.test(txt()));
+  click(btn('← Back')); await sleep(200);
+  click(btn('AMs')); await sleep(200); click(btn('Daily analysis →')); await waitFor(() => /What stands out/.test(txt()), 8000);
+  check('AMs: Daily analysis opens', /Account manager · /.test(txt()));
+  click(btn('← Back')); await sleep(200);
+  click(btn('Sales')); await sleep(200);
+  check('Sales view has a Portfolio overview button', !!btn('Portfolio overview →'));
+  click(btn('Portfolio overview →')); await waitFor(() => /Who drives|not in an account-manager portfolio/.test(txt()), 15000); await sleep(300);
+  { const pt = txt(), sName = entSel() ? null : null;
+    check('Sales portfolio overview opens with its charts, a note on merchants without daily history and no \\u codes', /Who drives/.test(pt) && /sales · /.test(pt) && /not in an account-manager portfolio yet/.test(pt) && !/\\u[0-9a-fA-F]{4}/.test(pt), pt.slice(0, 200)); }
+  click(btn('← Back to Target Tracker')); await sleep(200);
+  check('Back from the sales portfolio returns to the sales view', /Merchant detail/.test(txt()));
+  { // Merchant detail table: default = last month; the Target button shows the older target version
+    const tdOf = (tr) => Array.from(tr.querySelectorAll('td')).map((x) => x.textContent.trim());
+    const bodyRows = () => Array.from(document.querySelectorAll('tbody tr')).filter((tr) => tr.querySelectorAll('td').length >= 6 && tr.getAttribute('style') && /cursor: pointer/.test(tr.getAttribute('style')));
+    const heads = () => Array.from(document.querySelectorAll('thead th')).map((x) => x.textContent);
+    click(btn('Sales')); await sleep(200);
+    check('Sales table opens on the last-month version with the Compare with buttons', heads().some((h) => /GR %/.test(h)) && !!btn('Merchants contribution') && !!btn('Last month'));
+    click(btn('Merchants contribution')); await sleep(150);
+    const sGoal = PAYLOAD.org.sales[0].t.newPickups, r0 = bodyRows()[0], c0 = tdOf(r0);
+    check('Sales Target version: columns MTD total, % of rep target, share, run rate, run rate % of target', ['% of rep target', 'Share of rep pickups', 'Run rate % of target'].every((x) => heads().some((h) => h.includes(x))) && !heads().some((h) => /GR %/.test(h)));
+    check('Sales Target version: first row % of rep target = MTD ÷ the rep monthly target (' + sGoal + ')', Math.abs(num(c0[2]) - (num(c0[1]) / sGoal) * 100) < 0.01, c0.join(' | '));
+    click(btn('Last month')); await sleep(150);
+    check('Sales: back to the last-month version', heads().some((h) => /GR %/.test(h)));
+    click(btn('AMs')); await sleep(250); if (btn('Pickups')) { click(btn('Pickups')); await sleep(150); }
+    check('AM table opens on the last-month version (PMTD avg daily, GR %, run rate)', ['PMTD avg daily', 'GR %', 'Run rate'].every((x) => heads().some((h) => h.includes(x))) && !!btn('Merchants contribution'));
+    click(btn('Merchants contribution')); await sleep(150);
+    check('AM contribution version: Merchant weight, Delta, Achievement %; no GR %, no Below own target', ['Merchant weight', 'Achievement %', 'Delta'].every((x) => heads().some((h) => h.includes(x))) && !heads().some((h) => /GR %|PMTD|Below own target|Target avg daily/.test(h)));
+    const amN = entSel().value, rr = bodyRows().map(tdOf).find((c) => c[1] !== '—' && c[5] !== '—' && num(c[1]) > 0);
+    const mm = PAYLOAD.data.ams[amN].merchants.find((x) => x.name === rr[0].replace(/\(no Sep baseline\)/, '').trim()), tgt = mm.monthly.sep * 1.6 / PAYLOAD.data.wdFull;
+    check('AM Target version: row values match the independent calculation (target ' + tgt.toFixed(1) + ', achievement ' + Math.round(mm.mtdAvgDaily / tgt * 100) + '%)', rr[1] === tgt.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) && rr[5] === Math.round(mm.mtdAvgDaily / tgt * 100).toLocaleString('en-US') + '%', rr.join(' | '));
+    { const idIn = document.querySelector('input[aria-label="Search business ID"]'), nmIn = document.querySelector('input[aria-label="Search business name"]');
+      check('AM home has Business ID and Business name search boxes', !!idIn && !!nmIn);
+      const before = bodyRows().length; const first = tdOf(bodyRows()[0])[0].replace(/\(no Sep baseline\)/, '').trim();
+      setInput(nmIn, first.slice(0, 4)); await sleep(100);
+      const aft = bodyRows().map(tdOf); check('AM name search narrows the merchant table (' + before + ' to ' + aft.length + ')', aft.length >= 1 && aft.length <= before && aft.every((c) => c[0].toLowerCase().includes(first.slice(0, 4).toLowerCase())));
+      setInput(nmIn, ''); const mid = PAYLOAD.data.ams[entSel().value].merchants.find((x) => x.name === first).id; setInput(idIn, mid); await sleep(100);
+      check('AM business ID search finds the merchant', bodyRows().length === 1 && tdOf(bodyRows()[0])[0].includes(first.slice(0, 4)), String(bodyRows().length));
+      setInput(idIn, ''); await sleep(60); }
+    click(btn('ASP')); await sleep(150); check('ASP view hides the Compare with buttons', !btn('Last month'));
+    click(btn('Pickups')); await sleep(150); click(btn('Last month')); await sleep(100);
+    check('AM: Last month version restored', heads().some((h) => h.includes('PMTD avg daily')));
+  }
+  check('Daily analysis: no runtime errors', errors.length === 0, errors.slice(0, 2).join(' | '));
 }
 
 check('literal \\u sequences anywhere: none', !/\\u[0-9a-fA-F]{4}/.test(txt()));

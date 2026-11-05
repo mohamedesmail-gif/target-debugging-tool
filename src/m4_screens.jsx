@@ -90,16 +90,17 @@ function MerchantProfileView({ onBack, backLabel, onOpenMerchant, topSlot }) {
           {portfolio && <div style={{ fontSize: 11, letterSpacing: "0.12em", color: COLORS.textFaint, textTransform: "uppercase", fontFamily: MP_MONO, marginBottom: 4 }}>Portfolio overview</div>}
           <div style={{ fontSize: 24, fontWeight: 700, fontFamily: MP_MONO }}>{MP_MERCHANT.name}</div>
           <div style={{ fontSize: 12.5, color: COLORS.textMuted, marginTop: 2 }}>
-            {portfolio ? `account manager · ${MP_PF.filtered ? MP_PF.count + " of " + MP_PF.total + " merchants (filtered)" : MP_PF.count + " merchants"} · ${MP_PF.team} · Oct target ${fmt(MP_PF.target)} pickups (whole portfolio)` :
+            {portfolio ? `${MP_PF.kind || "account manager"} · ${MP_PF.filtered ? MP_PF.count + " of " + MP_PF.total + " merchants (filtered)" : MP_PF.count + " merchants"} · ${MP_PF.team} · ${MP_PF.kind === "sales" ? "Oct new-pickups target " + fmt(MP_PF.target) + " (all new and last-month merchants of the rep)" : "Oct target " + fmt(MP_PF.target) + " pickups (whole portfolio)"}` :
               `${MP_MERCHANT.id} · ${MP_MERCHANT.accountManager} · ${MP_MERCHANT.segment} · joined ${MP_MERCHANT.joinDate}${MP_MERCHANT.lastActivity ? " · last pickup " + MP_MERCHANT.lastActivity : ""}`}
           </div>
         </div>
 
+        {portfolio && MP_PF.skipped > 0 && <MPBanner text={MP_PF.skipped + " of this sales rep's merchants are not in an account-manager portfolio yet, so they have no daily history here and are left out of this overview."} />}
         {portfolio && MP_PF.filtered && <MPBanner text={"Filtered view of " + MP_PF.count + " merchants. DSR is exact; ASR for months before October is approximate (within about 1 point) because the mart only exposes each merchant's monthly ASR."} />}
         <MPHero monthIdx={monthIdx} />
 
         <div style={{ display: "flex", gap: 4, borderBottom: `2px solid ${COLORS.panelBorder}`, margin: "22px 0 16px", overflowX: "auto" }}>
-          {["Profile Overview", "Issues", "Opportunities"].concat(portfolio ? ["Analysis", "Debugger"] : []).map((t) => (
+          {["Profile Overview", "Issues", "Merchants & customers"].concat(portfolio ? [] : ["Opportunities"]).concat(portfolio ? ["Analysis", "Debugger"] : []).map((t) => (
             <button key={t} onClick={() => setMainTab(t)} style={{ padding: "10px 16px", fontSize: 13.5, fontWeight: 600, border: "none", background: "transparent", color: mainTab === t ? COLORS.blue : COLORS.textMuted, cursor: "pointer", borderBottom: mainTab === t ? `2px solid ${COLORS.blue}` : "2px solid transparent", marginBottom: -2, whiteSpace: "nowrap" }}>{t}</button>
           ))}
         </div>
@@ -111,16 +112,16 @@ function MerchantProfileView({ onBack, backLabel, onOpenMerchant, topSlot }) {
           {overviewSubTab === "Current month overview" && <MPCurrentMonthOverview granularity={curGran} setGranularity={setCurGran} />}
         </>)}
         {mainTab === "Issues" && (<>
-          <MPPillRow tabs={["Operational", "CX", "Merchants & customers"]} active={issuesSubTab} onChange={setIssuesSubTab} />
+          <MPPillRow tabs={["Operational", "CX"]} active={issuesSubTab} onChange={setIssuesSubTab} />
           {issuesSubTab === "Operational" && <MPOperationalIssues monthIdx={monthIdx} onOpenMerchant={onOpenMerchant} />}
           {issuesSubTab === "CX" && <MPCxIssues onOpenMerchant={onOpenMerchant} />}
-          {issuesSubTab === "Merchants & customers" && <MPMerchantCustomerIssues onOpenMerchant={onOpenMerchant} />}
         </>)}
-        {mainTab === "Opportunities" && <MPOpportunities monthIdx={monthIdx} />}
-        {(mainTab === "Analysis" || mainTab === "Debugger") && (
+        
+        {mainTab === "Opportunities" && !portfolio && <MPOpportunities monthIdx={monthIdx} />}
+        {(mainTab === "Merchants & customers" || mainTab === "Analysis" || mainTab === "Debugger") && (
           <div style={{ background: COLORS.panel, border: `1px dashed ${COLORS.panelBorder2}`, borderRadius: 12, padding: "30px 22px", textAlign: "center" }}>
             <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>{mainTab} · to be added</div>
-            <div style={{ fontSize: 12.5, color: COLORS.textMuted, maxWidth: 520, margin: "0 auto", lineHeight: 1.55 }}>Placeholder so the {mainTab} tab is not forgotten for the portfolio overview. Its content still needs to be defined.</div>
+            <div style={{ fontSize: 12.5, color: COLORS.textMuted, maxWidth: 520, margin: "0 auto", lineHeight: 1.55 }}>Placeholder so the {mainTab} tab is not forgotten. Its content still needs to be defined.</div>
           </div>
         )}
       </div>
