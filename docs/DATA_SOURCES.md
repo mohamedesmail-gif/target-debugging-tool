@@ -45,7 +45,7 @@ every build.
 |---|---|---|
 | Merchant-month records: orders, RTO, shipping revenue, allow to open, flexship, next day, extra COD, insurance, COD fee, discounts, compensation, customer colour counts (47 fields) | `public.deliveries`, last 3 full months, Sep 2026 onwards | NOT MART |
 | Order mix per merchant: order type x pickup zone x drop-off zone x size, with orders and shipping fee | `public.deliveries` | NOT MART |
-| Price plans: ~295 plans, price per type / lane / size, plus the allow to open, flexship, next day and extra COD rules | pricing Google Sheet, owned by Esraa (finance) | NO TABLE |
+| Price plans: ~320 plans, price per type / lane / size, plus the allow to open, flexship, next day and extra COD rules | `mart.v_pricing_rate_card` (daily load) and, for the 3 origin dependent plans, `dim.pricing_transit_costs`. Loaded into the packs by `scripts/refresh_pricing.py`. The Google Sheet (Esraa, finance) is no longer the source. | table |
 | Per-merchant cost: first mile, last mile fixed, packaging materials per order | Sep 2026 profitability file | NO TABLE |
 | Network cost rates: middle mile per governorate, hub, last mile variable, communication, reverse, cash collection | Sep 2026 profitability file, some entered by hand | NO TABLE |
 | Expected GM2 % by monthly orders range (14 bands, 29.3% down to 13.7%) | Sep 2026 actual P&L | NO TABLE |
@@ -87,3 +87,11 @@ pack is readable by anyone who can open the page. The second is only safe once a
   "current plan" column will not match what was billed.
 - Orders on a lane or size the rate card does not cover are dropped from the simulated revenue. The calculator says
   so when it happens.
+
+## Refreshing the rate card from Redshift (2026-11-16)
+`python3 scripts/refresh_pricing.py --compare` prints how Redshift differs from the rate card in the pack (plans added or removed, plans whose
+send price changed). Without `--compare` it rewrites `pricing`, `card` and `pricing_asof` in `data/pricing_store.b64` and
+`data/pricing_store_full.b64`, then upload both next to `payload.json`. It needs the same four `REDSHIFT_*` variables as `jobs/refresh_payload.py`.
+Logic test: `python3 tests/test_refresh_pricing.py`. The connection itself has not been run from the build sandbox.
+Known differences found on 2026-11-16 against the sheet of 2026-11-03: 25 plans are new in Redshift, and `Warehousing-EGY-Traders` has a
+different send price (sheet 50,54,61,74,74,89,107; Redshift 55,59,63,76,76,91,109). Run `--compare` before relying on the new card.
