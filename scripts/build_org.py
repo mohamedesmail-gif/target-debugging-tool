@@ -71,7 +71,8 @@ def apply_db_targets(rows):
         churn = g('Sales Manager', s['name'], 'churn')
         # Startups: the value is the churn target as it is. Growth / Key: the sheet column "Churn%" is read as retention (max churn = 1 - value), see docs/METRICS.md
         s['t'] = dict(newPickups=g('Sales Manager', s['name'], 'fresh pickups'), asp=g('Sales Manager', s['name'], 'ASP'), churn=churn if s['team'] == 'Startups' else (None if churn is None else round(1 - churn, 10)), churnSheet=churn)
-_DB_T = DATA / 'commercial_monthly_targets_db.json'
+TARGETS_MONTH = os.environ.get('TARGETS_MONTH', '2026-10')   # which month of public.commercial_monthly_targets to use (YYYY-MM); the file is written by jobs/refresh_payload.py --month
+_DB_T = DATA / ('commercial_monthly_targets_db.json' if TARGETS_MONTH == '2026-10' else 'commercial_monthly_targets_db_%s.json' % TARGETS_MONTH)
 if _DB_T.exists() and os.environ.get('TARGETS_SOURCE', 'db') == 'db':
     _sheet_t = {id(p): dict(p['t']) for p in heads + tls + ams + sales}
     _before = {(k, p.get('id') or p['name']): dict(p['t']) for k, L in (('h', heads), ('t', tls), ('a', ams), ('s', sales)) for p in L}

@@ -377,11 +377,14 @@ standCheck(EL.t4, 'TL Ahmed Saleh'); await listCheck(EL.t4, 'TL Ahmed Saleh', ['
 check('the Open button leads to the Target Tracker for Farha', p.includes('Target daily avg') && p.includes('Farha Aly Saad'));
 check('AM tracker: ASP card = ' + XO.am_farha.asp.toFixed(1) + ' vs target ' + XO.am_farha.target.asp, p.includes(XO.am_farha.asp.toFixed(1)) && p.includes('target ' + XO.am_farha.target.asp.toFixed(1)));
 check('AM tracker: retention card = ' + fixedP(XO.am_farha.retention, 1) + '% vs target >= 99.0%, marked provisional', p.includes(fixedP(XO.am_farha.retention, 1) + '%') && p.includes('target ≥ 99.0%') && /provisional/.test(p));
-check('AM tracker: no merchant-profile buttons or links', !document.querySelector('button[title="Open merchant profile"]'));
+check('AM tracker: merchant names open the merchant profile', !!document.querySelector('button[title="Open merchant profile"]'));
 { const r = Array.from(document.querySelectorAll('tbody tr')).find((x) => x.textContent.includes('Trend Hub')); click(r); await sleep(80);
-  check('merchant detail drilldown has no "View full merchant profile" any more', !txt().includes('View full merchant profile') && txt().includes('Business ID:'));
+  check('merchant detail drilldown offers "View full merchant profile"', txt().includes('View full merchant profile') && txt().includes('Business ID:'));
   { const mm = PAYLOAD.data.ams['Farha Aly Saad'].merchants.find((x) => x.id === 'ImbeR25m9'), D = PAYLOAD.data; const g = ((mm.td / D.wdElapsed) - (mm.ptd / D.wdPtd)) / (mm.ptd / D.wdPtd) * 100;
     check('merchant growth status compares the same days of both months: ' + g.toFixed(1) + '% avg daily, days 1–' + D.ptdDays, txt().includes(g.toFixed(1) + '% avg daily, days 1–' + D.ptdDays + " vs last month's days 1–" + D.ptdDays)); }
+  { const pb = document.querySelector('button[title="Open merchant profile"]'); click(pb); await sleep(250);
+    check('merchant profile (AM view) has no Pricing tab and no calculator button, even for the VP', !btn('Pricing') && !!btn('Opportunities') && !btn('Pricing calculator'));
+    check('profile renders after the pricing gate', txt().length > 100); await cw('\u2190 Back to Target Tracker'); await sleep(150); }
   click(r); await sleep(30); }
 // level bar from the AM view
 click(btn('Team leaders')); await sleep(150);

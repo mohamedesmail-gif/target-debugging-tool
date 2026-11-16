@@ -88,7 +88,10 @@ function MerchantProfileView({ onBack, backLabel, onOpenMerchant, topSlot }) {
         {topSlot}
         <div style={{ marginBottom: 18 }}>
           {portfolio && <div style={{ fontSize: 11, letterSpacing: "0.12em", color: COLORS.textFaint, textTransform: "uppercase", fontFamily: MP_MONO, marginBottom: 4 }}>Portfolio overview</div>}
-          <div style={{ fontSize: 24, fontWeight: 700, fontFamily: MP_MONO }}>{MP_MERCHANT.name}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+            <div style={{ fontSize: 24, fontWeight: 700, fontFamily: MP_MONO }}>{MP_MERCHANT.name}</div>
+            {!portfolio && <PricingCalculatorButton merchantId={MP_MERCHANT.id} merchantName={MP_MERCHANT.name} canSeeMargin={prcCanSeeMargin()} />}
+          </div>
           <div style={{ fontSize: 12.5, color: COLORS.textMuted, marginTop: 2 }}>
             {portfolio ? `${MP_PF.kind || "account manager"} · ${MP_PF.filtered ? MP_PF.count + " of " + MP_PF.total + " merchants (filtered)" : MP_PF.count + " merchants"} · ${MP_PF.team} · ${MP_PF.kind === "sales" ? "Oct new-pickups target " + fmt(MP_PF.target) + " (all new and last-month merchants of the rep)" : "Oct target " + fmt(MP_PF.target) + " pickups (whole portfolio)"}` :
               `${MP_MERCHANT.id} · ${MP_MERCHANT.accountManager} · ${MP_MERCHANT.segment} · joined ${MP_MERCHANT.joinDate}${MP_MERCHANT.lastActivity ? " · last pickup " + MP_MERCHANT.lastActivity : ""}`}
@@ -100,7 +103,7 @@ function MerchantProfileView({ onBack, backLabel, onOpenMerchant, topSlot }) {
         <MPHero monthIdx={monthIdx} />
 
         <div style={{ display: "flex", gap: 4, borderBottom: `2px solid ${COLORS.panelBorder}`, margin: "22px 0 16px", overflowX: "auto" }}>
-          {["Profile Overview", "Issues", "Merchants & customers"].concat(portfolio ? [] : ["Opportunities"]).concat(portfolio ? ["Analysis", "Debugger"] : []).map((t) => (
+          {["Profile Overview", "Issues", "Merchants & customers"].concat(portfolio ? [] : ["Opportunities"].concat(prcCanUse() ? ["Pricing"] : [])).concat(portfolio ? ["Analysis", "Debugger"] : []).map((t) => (
             <button key={t} onClick={() => setMainTab(t)} style={{ padding: "10px 16px", fontSize: 13.5, fontWeight: 600, border: "none", background: "transparent", color: mainTab === t ? COLORS.blue : COLORS.textMuted, cursor: "pointer", borderBottom: mainTab === t ? `2px solid ${COLORS.blue}` : "2px solid transparent", marginBottom: -2, whiteSpace: "nowrap" }}>{t}</button>
           ))}
         </div>
@@ -118,6 +121,7 @@ function MerchantProfileView({ onBack, backLabel, onOpenMerchant, topSlot }) {
         </>)}
         
         {mainTab === "Opportunities" && !portfolio && <MPOpportunities monthIdx={monthIdx} />}
+        {mainTab === "Pricing" && !portfolio && <MPPricingTab canSeeMargin={prcCanSeeMargin()} />}
         {(mainTab === "Merchants & customers" || mainTab === "Analysis" || mainTab === "Debugger") && (
           <div style={{ background: COLORS.panel, border: `1px dashed ${COLORS.panelBorder2}`, borderRadius: 12, padding: "30px 22px", textAlign: "center" }}>
             <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>{mainTab} · to be added</div>

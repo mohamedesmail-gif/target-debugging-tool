@@ -51,10 +51,10 @@ trep('      // Growth status: this month\'s avg daily (MTD) vs last month\'s (Se
 trep('Growth status vs. last month:{" "}', 'Growth status vs. the same days last month:{" "}')
 trep('{fmt(insight.growthPct, 1)}% MoM avg daily)', '{fmt(insight.growthPct, 1)}% avg daily, days 1\u2013{DATA.ptdDays} vs last month\'s days 1\u2013{DATA.ptdDays})')
 
-# ---- org levels: states, navigation, routes, level bar, AM scorecards; the merchant-profile entry points are disabled
+# ---- org levels: states, navigation, routes, level bar, AM scorecards
 trep('  const [profileBack, setProfileBack] = useState("tracker");\n  const [selectedMerchant, setSelectedMerchant] = useState(null);\n  const openMerchantProfile = (m, from) => { setSelectedMerchant({ ...m, am: m.am || amName }); setProfileBack(from || "tracker"); setScreen("profile"); };',
-     '  const [sess, setSess] = useState(hostSession || (AUTH_ENABLED ? null : AUTH_DEFAULT_SESSION));\n  const [loginMsg, setLoginMsg] = useState(null);\n  const viewerKey = sess ? sess.viewerKey : "vp";\n  const [leadTab, setLeadTab] = useState("all");\n  const [tlId, setTlId] = useState(ORG.tls[0].id);\n  const [salesId, setSalesId] = useState(ORG.sales[0].id);\n  const [dailySpec, setDailySpec] = useState(null);\n  const [dailyFrom, setDailyFrom] = useState("vp");')
-trep('const [screen, setScreen] = useState("tracker");', 'const [screen, setScreen] = useState(hostSession ? viewerDefault(parseViewer(hostSession.viewerKey)).screen : "vp");')
+     '  const [profileBack, setProfileBack] = useState("tracker");\n  const [selectedMerchant, setSelectedMerchant] = useState(null);\n  const openMerchantProfile = (m, from) => { setSelectedMerchant({ ...m, am: m.am || amName }); setProfileBack(from || "tracker"); setScreen("profile"); };\n  const [sess, setSess] = useState(hostSession || (AUTH_ENABLED ? null : AUTH_DEFAULT_SESSION));\n  const [loginMsg, setLoginMsg] = useState(null);\n  const viewerKey = sess ? sess.viewerKey : "vp";\n  const [leadTab, setLeadTab] = useState("all");\n  const [tlId, setTlId] = useState(ORG.tls[0].id);\n  const [salesId, setSalesId] = useState(ORG.sales[0].id);\n  const [dailySpec, setDailySpec] = useState(null);\n  const [dailyFrom, setDailyFrom] = useState("vp");')
+trep('const [screen, setScreen] = useState("tracker");', 'const [screen, setScreen] = useState(hostSession ? viewerDefault(parseViewer(hostSession.viewerKey)).screen : "vp");\n  const [simSpec, setSimSpec] = useState(null);')
 trep(r'  if \(screen === "portfolio"\) \{.*?\n  \}\n  if \(screen === "profile"\) \{.*?\n  \}',
      """  const viewer = parseViewer(viewerKey), scope = scopeOf(viewer);
   const nav = {
@@ -80,6 +80,7 @@ trep(r'  if \(screen === "portfolio"\) \{.*?\n  \}\n  if \(screen === "profile"\
       else spec = { kind: "am", ent: ORG.ams.find((a) => a.name === amName) };
       setDailySpec(spec); setDailyFrom(cur); setScreen("daily");
     },
+    openSimulator: prcCanUse(viewerKey) ? (id) => { setSimSpec({ id: id || null, from: screen }); setScreen("simulator"); } : null,
     session: sess,
     signOut: () => { setSess(null); setLoginMsg(AUTH_MESSAGES.signedOut); setExpandedId(null); if (onSignOut) onSignOut(); },
   };
@@ -96,8 +97,12 @@ trep(r'  if \(screen === "portfolio"\) \{.*?\n  \}\n  if \(screen === "profile"\
   };
   if (!sess) return <LoginScreen message={loginMsg} onAccount={signIn} />;
   if (screen === "portfolio") {
-    return <PortfolioScreen am={amName} amData={amData} analysis={analysis} onBack={() => setScreen("tracker")} />;
+    return <PortfolioScreen am={amName} amData={amData} analysis={analysis} onBack={() => setScreen("tracker")} onOpenMerchant={(m) => openMerchantProfile(m, "portfolio")} />;
   }
+  if (screen === "profile") {
+    return <MerchantProfileScreen merchant={selectedMerchant} onBack={() => setScreen(profileBack)} backLabel={profileBack === "portfolio" ? "\u2190 Back to portfolio overview" : "\u2190 Back to Target Tracker"} />;
+  }
+  if (screen === "simulator") return <PricingSimulatorScreen nav={nav} viewerKey={viewerKey} initialId={simSpec && simSpec.id} onBack={() => setScreen(simSpec && simSpec.from && simSpec.from !== "simulator" ? simSpec.from : "vp")} />;
   if (screen === "daily" && dailySpec) return <DailyAnalysisScreen nav={nav} spec={dailySpec} onBack={() => nav.go(dailyFrom === "heads" ? "heads" : dailyFrom, dailyFrom === "heads" ? leadTab : dailyFrom === "tl" ? tlId : dailyFrom === "sales" ? salesId : undefined)} />;
   if (screen === "vp") return <LeadershipScreen nav={nav} mode="vp" />;
   if (screen === "heads") return <LeadershipScreen nav={nav} mode="heads" />;
@@ -106,9 +111,6 @@ trep(r'  if \(screen === "portfolio"\) \{.*?\n  \}\n  if \(screen === "profile"\
 trep('      <div style={{ maxWidth: 1080, margin: "0 auto" }}>\n        {/* Header */}', '      <div style={{ maxWidth: 1080, margin: "0 auto" }}>\n        <LevelBar nav={nav} current="am" />\n        {/* Header */}')
 trep('Phase 1 &middot; Pickups &middot; {DATA.month}', 'Scorecard &middot; {DATA.month}')
 trep('        <AchievementBar pct={analysis.targetProgressPct} />', '        <AchievementBar pct={analysis.targetProgressPct} detail={fmt(analysis.totalActualMtdPickups) + " of " + fmt(analysis.thresholdDailyTarget) + " pickups"} />\n        <AmScoreCards amName={amName} an={analysis} />')
-trep(r'<button\n\s+onClick=\{\(e\) => \{ e\.stopPropagation\(\); openMerchantProfile\(m\); \}\}.*?\{m\.name\}\n\s+</button>', '<span>{m.name}</span>', regex=True)
-trep(r'\n          <div style=\{\{ marginTop: 4 \}\}>\n            <button\n              onClick=\{\(\) => onOpenProfile\(merchant\)\}.*?View full merchant profile.*?</button>\n          </div>', '', regex=True)
-trep('<MerchantDrilldown merchant={m} weight={m.merchantTarget} onOpenProfile={openMerchantProfile} />', '<MerchantDrilldown merchant={m} weight={m.merchantTarget} />')
 
 # ---- Merchant detail table: toggle Pickups / ASP
 trep('  const [expandedId, setExpandedId] = useState(null);', '  const [expandedId, setExpandedId] = useState(null);\n  const [tableView, setTableView] = useState("pickups"); // "pickups" | "asp"')
@@ -337,7 +339,14 @@ tail = ('// ---- embedded profile data (generated from mart.v_merchant_monthly_w
         '// {"p": {business_id: [monthlyPack, dailyPack]}, "x": {...}, "pf": {account_manager: [...]}, "cm": {current-month parcel issues, tickets, failed attempts}}\n'
         'const MP_DATA_B64 = __P.store;\n')
 
-out = tb['s'] + '\n' + hb['s'] + R('m1_prims.jsx') + R('m2_overview.jsx') + R('m5_compare.jsx') + R('m6_cm.jsx') + R('m3_issues.jsx') + R('m7_org.jsx') + R('m8_lead.jsx') + R('m10_daily.jsx') + R('m9_auth.jsx') + R('m4_screens.jsx') + '\n' + tail
+# pricing_engine.js is plain JS (no JSX, no React) so tests/pricing.mjs can run it on its own; m11_pricing.jsx is its UI.
+# Both go after m8_lead.jsx, which defines parseViewer(), and before m4_screens.jsx, which mounts the tab and the button.
+out = tb['s'] + '\n' + hb['s'] + R('m1_prims.jsx') + R('m2_overview.jsx') + R('m5_compare.jsx') + R('m6_cm.jsx') + R('m3_issues.jsx') + R('m7_org.jsx') + R('m8_lead.jsx') + R('pricing_engine.js') + R('m11_pricing.jsx') + R('m12_simulator.jsx') + R('m10_daily.jsx') + R('m9_auth.jsx') + R('m4_screens.jsx') + '\n' + tail
+
+# the pricing gate needs to know who is signed in; the app computes it once per render
+_vk_old = '  const viewer = parseViewer(viewerKey), scope = scopeOf(viewer);'
+assert out.count(_vk_old) == 1, ('PRC_VIEWER_KEY patch: expected 1 viewer line, found', out.count(_vk_old))
+out = out.replace(_vk_old, _vk_old + '\n  PRC_VIEWER_KEY = viewerKey;\n  PRC_SCREEN = screen;\n  PRC_OPEN_SIM = (id) => { setSimSpec({ id, from: screen }); setScreen("simulator"); };')
 # the window labels in the source say "Oct 1-4" / "Sep 1-4": fill them with the days of the data (ORG.days)
 _N = _json.load(open('../data/org_final.json', encoding='utf-8'))['days']
 out = out.replace('Oct 1\u20134', 'Oct 1\u2013%d' % _N).replace('Sep 1\u20134', 'Sep 1\u2013%d' % _N)

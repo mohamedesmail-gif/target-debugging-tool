@@ -32,12 +32,12 @@ if __name__ == '__main__':
     prev0 = (m0 - datetime.timedelta(days=1)).replace(day=1); conn = connect(); T = DATA / 'tmp_pages'; T.mkdir(exist_ok=True)
     # 1) targets: public.commercial_monthly_targets (the hierarchy / teams / weights still come from the targets workbook: no table has them)
     save(run(conn, "SELECT target_month::varchar, employee_name, role, target_type, target_value, loaded_at::varchar FROM public.commercial_monthly_targets WHERE target_month = DATE '%s'" % a.month), T / 't.json')
-    json.dump(json.load(open(T / 't.json'))['data']['rows'], open(DATA / 'commercial_monthly_targets_db.json', 'w'), ensure_ascii=False)
+    _tf = DATA / ('commercial_monthly_targets_db.json' if a.month[:7] == '2026-10' else 'commercial_monthly_targets_db_%s.json' % a.month[:7]); json.dump(json.load(open(T / 't.json'))['data']['rows'], open(_tf, 'w'), ensure_ascii=False)
     # 2) working days from the calendar (Fridays excluded)
     wd = lambda d0, d1: run(conn, "SELECT COUNT(*) FROM mart.v_bosta_calendar WHERE date BETWEEN DATE '%s' AND DATE '%s' AND EXTRACT(dow FROM date) <> 5" % (d0, d1))[0][0]
     elapsed, full = wd(m0, asof), wd(m0, m0.replace(day=calendar.monthrange(m0.year, m0.month)[1]))
     # 3) roster + monthly / daily packs + metadata (mart.v_merchant_monthly_wide, v_merchant_daily_wide, dim_merchant_period; website / sub-accounts: public.*, see docs/DATA_SOURCES.md)
-    ams = sorted({r[1] for r in json.load(open(DATA / 'commercial_monthly_targets_db.json')) if r[2] == 'Account Manager'}); aml = ', '.join("'" + x.replace("'", "''") + "'" for x in ams)
+    ams = sorted({r[1] for r in json.load(open(_tf)) if r[2] == 'Account Manager'}); aml = ', '.join("'" + x.replace("'", "''") + "'" for x in ams)
     pages, off = [], 0
     while True:
         rows = run(conn, render('pull_roster_packs.sql', **{'from': str(prev0), 'to': str(asof), 'limit': 1700, 'offset': off}).replace('__AM_LIST__', aml)); save(rows, T / ('p%d.json' % len(pages))); pages.append(str(T / ('p%d.json' % len(pages))))
