@@ -102,7 +102,7 @@ trep(r'  if \(screen === "portfolio"\) \{.*?\n  \}\n  if \(screen === "profile"\
   if (screen === "profile") {
     return <MerchantProfileScreen merchant={selectedMerchant} onBack={() => setScreen(profileBack)} backLabel={profileBack === "portfolio" ? "\u2190 Back to portfolio overview" : "\u2190 Back to Target Tracker"} />;
   }
-  if (screen === "simulator") return <PricingSimulatorScreen nav={nav} viewerKey={viewerKey} initialId={simSpec && simSpec.id} onBack={() => setScreen(simSpec && simSpec.from && simSpec.from !== "simulator" ? simSpec.from : "vp")} />;
+  if (screen === "simulator") return <PricingSimulatorScreen nav={nav} viewerKey={viewerKey} initialId={simSpec && simSpec.id} fromScreen={simSpec && simSpec.from} onBack={() => setScreen(simSpec && simSpec.from && simSpec.from !== "simulator" ? simSpec.from : "vp")} />;
   if (screen === "daily" && dailySpec) return <DailyAnalysisScreen nav={nav} spec={dailySpec} onBack={() => nav.go(dailyFrom === "heads" ? "heads" : dailyFrom, dailyFrom === "heads" ? leadTab : dailyFrom === "tl" ? tlId : dailyFrom === "sales" ? salesId : undefined)} />;
   if (screen === "vp") return <LeadershipScreen nav={nav} mode="vp" />;
   if (screen === "heads") return <LeadershipScreen nav={nav} mode="heads" />;

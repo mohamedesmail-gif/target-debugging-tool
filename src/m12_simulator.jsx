@@ -615,9 +615,13 @@ function SimCostTab({ store }) {
 }
 
 // ---------------------------------------------------------------- screen
-function PricingSimulatorScreen({ nav, viewerKey, initialId, onBack }) {
+// fromScreen: the screen the simulator was opened from. The simulator follows that view, not only who is signed in, so a VP
+// who opens it from the team leaders view sees what a team leader sees (no margin), and the Cost assumptions tab
+// appears only when it was opened from the VP view.
+function PricingSimulatorScreen({ nav, viewerKey, initialId, fromScreen, onBack }) {
   const viewer = parseViewer(viewerKey);
-  const canMargin = prcCanSeeMargin(viewerKey), canCost = prcCanSeeCostTab(viewerKey);
+  const canMargin = prcCanSeeMargin(viewerKey) && fromScreen !== "tl";
+  const canCost = prcCanSeeCostTab(viewerKey) && (!fromScreen || fromScreen === "vp");
   const [tab, setTab] = useState("existing");
   const [store, setStore] = useState(null);
   const [error, setError] = useState(null);
