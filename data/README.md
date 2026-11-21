@@ -21,22 +21,4 @@ Data as of **2026-10-04** (current-month detail pulled 2026-10-05). The roster i
 
 Refresh inputs added for the Oct 15 refresh: `daily_packs.json`, `meta_rows.json`, `pf_monthly.json` (from `scripts/ingest_roster.py`), `profile_store_prev.b64` (the previous store, kept for creation source and locations).
 
-## `pricing_store.b64` — Pricing calculator and Pricing tab
-
-base64(gzip(JSON)): merchant-month records, the rate card and the cost rates. Built by
-`python3 scripts/build_pricing.py --export <simulator export>`. It is **not** part of `payload.json`: the app
-fetches it the first time someone opens the calculator, from `window.PORTAL_CONFIG.pricingUrl`
-(default `/pricing_store.b64`).
-
-The default pack (no flag) is revenue and ASP only. Build the full pack with `--with-cost` for account-manager and sales sessions. It keeps revenue and ASP exact and
-cannot produce a GM2, because the cost rates are not in the file at all.
-
-| Pack | Size |
-|---|---|
-| all 13,288 merchants, 3 months | 8.9 MB |
-| all merchants, 1 month | 4.5 MB |
-| all merchants, 1 month, `--no-cost` | 3.7 MB |
-
-`--ids <file>` scopes it to a list of business ids (the roster) and cuts it further. See docs/DATA_SOURCES.md.
-
 Access (private): `access_hashed.json`, `user_access.sql`, `test_emails.json` (from `scripts/build_access.py`; emails come from the targets sheet + the VP).

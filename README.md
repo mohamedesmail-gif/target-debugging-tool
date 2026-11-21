@@ -47,10 +47,3 @@ The app has no embedded data: `docs/DATA_SOURCES.md` lists every data point and 
 ## Also in this repo
 - `sql/data_points.sql`: one self-contained query per data point (section tags show which are mart tables and which are not).
 - `docs/org-chart/`: the commercial team structure (VP, heads, team leaders, AMs, sales) as SVG and PNG.
-
-## Latest changes (Oct 27)
-- Required daily average card removed everywhere; Achievement % column in the heads, team leaders, AMs and sales tables.
-- Main view: New merchants (MTD) in Base, New base ASP in Activity.
-- Top 10 / Bottom 10 dropdown: pickups MTD avg daily vs PMTD (GR %), ASP MTD vs PMTD (GR %), DSR, VAS.
-- AM merchant table: MTD vs PMTD avg daily, Delta, GR %, MTD vs PMTD total volume, Run rate, Status.
-- "Total eligible revenue" renamed "Total revenues". Sales view rebuilt on the AM layout.

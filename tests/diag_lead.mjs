@@ -26,7 +26,7 @@ click(btn('VP')); await sleep(80); scan('VP screen');
 click(btn('Heads')); await sleep(80);
 for (const tab of ['Key Accounts', 'Growth Fashion', 'Growth General Trade', 'Growth Cosmetics', 'Startups']) {
   const t1 = Date.now(); click(Array.from(document.querySelectorAll('button')).find((b) => b.textContent.trim() === tab)); await sleep(60); scan('tab ' + tab);
-  for (const v of ['pickups-growth', 'asp-growth', 'dsr', 'vas']) { setSel(Array.from(document.querySelectorAll('select')).find((x) => x.getAttribute('aria-label') === 'Top and bottom list'), v); await sleep(25); scan('tab ' + tab + ' / ' + v); }
+  for (const v of ['asp-target', 'retention-target', 'fresh-target', 'churn-target', 'pickups', 'asp', 'growth', 'dsr', 'vas', 'pickups-target']) { setSel(Array.from(document.querySelectorAll('select')).find((x) => x.getAttribute('aria-label') === 'Top and bottom list'), v); await sleep(25); scan('tab ' + tab + ' / ' + v); }
   slowest = Math.max(slowest, Date.now() - t1);
 }
 let expanded = 0;

@@ -158,8 +158,6 @@ function LevelBar({ nav, current }) {
       ))}
       <InfoTip text="VP is the company view; Heads has one tab per team; team leaders show their AMs and sales. Only the levels your access allows are shown." />
       <span style={{ flex: 1 }} />
-      {nav.openDaily && <button data-testid="daily-btn" onClick={() => nav.openDaily(current)} style={{ padding: "6px 16px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, cursor: "pointer", border: `1px solid ${COLORS.blue}`, background: COLORS.panel, color: COLORS.blue }}>Daily analysis →</button>}
-      {nav.openSimulator && <button data-testid="sim-btn" onClick={() => nav.openSimulator()} style={{ padding: "6px 16px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, cursor: "pointer", border: `1px solid ${COLORS.blue}`, background: COLORS.blue, color: "#fff" }}>Pricing simulator →</button>}
       {AUTH_ENABLED && (<>      <span data-testid="user-chip" style={{ fontSize: 12.5, color: COLORS.text }}><strong>{nav.session.name}</strong><span style={{ color: COLORS.textMuted }}> · {authRoleOf(nav.session)}</span></span>
       <InfoTip text="Your access level comes from your sign-in: VP sees everything; a head his own team; a team leader his AMs and sales; an AM or sales rep only their own view. With the data embedded in this file the screens are scoped but the data is still in the page: real enforcement needs the backend (docs/ACCESS.md)." />
       <button onClick={() => nav.signOut()} style={{ padding: "5px 12px", fontSize: 12, fontWeight: 600, borderRadius: 8, cursor: "pointer", border: `1px solid ${COLORS.panelBorder2}`, background: COLORS.panel, color: COLORS.textMuted }}>Sign out</button></>)}
@@ -184,211 +182,44 @@ function OrgSelect({ value, onChange, options }) {
   return <select value={value} onChange={(e) => onChange(e.target.value)} style={{ background: COLORS.panel, border: `1px solid ${COLORS.panelBorder2}`, borderRadius: 8, color: COLORS.text, fontSize: 20, fontWeight: 600, padding: "6px 10px", maxWidth: "100%" }}>{options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>;
 }
 
-// ---------- Sales view: same layout as the AM view (achievement bar, score cards, headline stats, merchant detail table, Pickups / ASP toggle) ----------
-function salesWorkingDays(from, to) { // working days (Fridays excluded) from..to, both included
-  let n = 0;
-  for (let t = new Date(from + "T00:00:00Z").getTime(), end = new Date(to + "T00:00:00Z").getTime(); t <= end; t += 864e5) if (new Date(t).getUTCDay() !== 5) n++;
-  return Math.max(1, n);
-}
 function SalesScreen({ nav }) {
   const s = nav.allowedSales.find((x) => x.id === nav.salesId) || nav.allowedSales[0];
   const [fid, setFid] = useState(""); const [fname, setFname] = useState("");
-  const [view, setView] = useState("pickups"); // "pickups" | "asp"
-  const [sortKey, setSortKey] = useState("mtdAvg"); const [sortDir, setSortDir] = useState("desc");
-  const [openId, setOpenId] = useState(null);
-  const [pfOpen, setPfOpen] = useState(false);
-  const [cmp, setCmp] = useState("prev"); // pickups table: "prev" = against last month, "target" = against the rep's monthly target
-  const sc = orgScore("sales", s), g = sc.g;
-  const p = sc.pickups, a = sc.asp, ch = sc.churn;
-  const el = DATA.wdElapsed, full = DATA.wdFull, rem = Math.max(0, full - el);
-  const goal = p.target || 0, pk = p.actual, ofTarget = goal ? pk / goal : 0, col = ofTarget >= 1 ? COLORS.teal : COLORS.coral;
-  const avgDaily = el ? pk / el : 0, run = pk + avgDaily * rem, runPct = goal ? run / goal : 0;
-  const prevEnd = new Date(new Date(DATA.asOf.slice(0, 8) + "01T00:00:00Z").getTime() - 864e5).toISOString().slice(0, 10);
-  const all = [
-    ...s.newList.map((r) => ({ id: r[0], name: r[1], fp: r[2], mtd: r[3], dl: r[4], rev: r[5], prev: null, group: "New", status: "New" })),
-    ...s.cohortList.map((r) => ({ id: r[0], name: r[1], fp: r[2], mtd: r[3], dl: r[4], rev: r[5], prev: r[6], group: "Last month's new", status: r[3] > 0 ? "Active" : "Churned" })),
-  ].map((r) => {
-    const mtdAvg = el ? r.mtd / el : 0, prevAvg = r.prev == null ? null : r.prev / salesWorkingDays(r.fp, prevEnd);
-    const delta = prevAvg == null ? null : mtdAvg - prevAvg, gr = prevAvg > 0 ? (delta / prevAvg) * 100 : null;
-    return { ...r, mtdAvg, prevAvg, delta, gr, run: r.mtd + mtdAvg * rem, asp: r.dl ? r.rev / r.dl : null, ofGoal: goal ? r.mtd / goal : null, shareP: pk ? r.mtd / pk : null, runOfGoal: goal ? (r.mtd + mtdAvg * rem) / goal : null };
-  });
+  const sc = orgScore("sales", s);
   const t = s.tlId ? ORG_TL[s.tlId] : null, h = ORG_HEAD[s.headId];
-  const match = (r) => (!fid || r.id.toLowerCase().includes(fid.toLowerCase())) && (!fname || String(r.name).toLowerCase().includes(fname.toLowerCase()));
-  const shown = all.filter(match);
-  // ASP view: the same gap-contribution logic as the AM view, against this sales rep's ASP target
-  const T = s.t.asp, elig = all.filter((r) => r.dl > 0), D = elig.reduce((x, r) => x + r.dl, 0), REV = elig.reduce((x, r) => x + r.rev, 0), P = D ? REV / D : null;
-  const aspRows = shown.filter((r) => r.dl > 0).map((r) => ({ ...r, share: D ? r.dl / D : null, gapC: T != null && D ? (r.dl / D) * (r.asp - T) : null }));
-  const keyOf = (r, k) => (k === "name" ? r.name : k === "group" ? r.group : k === "status" ? r.status : k === "fp" ? r.fp : r[k]);
-  const sorted = (list) => list.slice().sort((x, y) => { const u = keyOf(x, sortKey), v = keyOf(y, sortKey); if (u == null && v == null) return 0; if (u == null) return 1; if (v == null) return -1; return typeof u === "string" ? (sortDir === "asc" ? 1 : -1) * u.localeCompare(v) : (sortDir === "asc" ? 1 : -1) * (u - v); });
-  const onSort = (k) => { if (sortKey === k) setSortDir(sortDir === "asc" ? "desc" : "asc"); else { setSortKey(k); setSortDir("desc"); } };
+  const match = (r) => (!fid || r[0].toLowerCase().includes(fid.toLowerCase())) && (!fname || String(r[1]).toLowerCase().includes(fname.toLowerCase()));
+  const newRows = s.newList.filter(match), cohortRows = s.cohortList.filter(match);
+  const asp = (r) => (r[4] ? fmt(r[5] / r[4], 1) : "—");
+  const th = { padding: "8px 12px", textAlign: "left", fontSize: 10.5, color: COLORS.textFaint, textTransform: "uppercase", letterSpacing: ".05em", fontWeight: 600, whiteSpace: "nowrap" };
+  const td = { padding: "8px 12px", whiteSpace: "nowrap" };
   const inp = { padding: "7px 10px", borderRadius: 8, border: `1px solid ${COLORS.panelBorder2}`, fontSize: 12.5, minWidth: 170, background: COLORS.panel };
-  const mono = { padding: "9px 14px", textAlign: "right", fontFamily: "'IBM Plex Mono', monospace", whiteSpace: "nowrap" };
-  const sgn = (v, d) => (v == null ? "—" : (v >= 0 ? "+" : "−") + fmt(Math.abs(v), d));
-  const dcol = (v) => (v == null ? COLORS.textFaint : v >= 0 ? COLORS.teal : COLORS.coral);
-  const nameCell = (r, open) => (<td style={{ padding: "9px 14px", fontSize: 12.5, color: COLORS.text, maxWidth: 240 }}><span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>{open ? <ChevronDown size={13} color={COLORS.textFaint} /> : <ChevronRight size={13} color={COLORS.textFaint} />}<span>{r.name}</span></span><div style={{ fontSize: 10.5, color: COLORS.textFaint, marginLeft: 18 }}>{r.group} · first pickup {r.fp}</div></td>);
-  const drill = (r, cols) => (
-    <tr><td colSpan={cols} style={{ padding: 0, borderTop: `1px solid ${COLORS.panelBorder}` }}>
-      <div style={{ padding: "14px 20px 16px 38px", background: "#FAFBFC", fontSize: 12.5, color: COLORS.textMuted, lineHeight: 1.7 }}>
-        <div>Business ID: <strong style={{ color: COLORS.text, fontFamily: "'IBM Plex Mono', monospace" }}>{r.id}</strong> · first pickup <strong style={{ color: COLORS.text }}>{r.fp}</strong> · {r.group === "New" ? <span style={{ color: COLORS.purple }}>New this month: no history to compare with yet.</span> : <span>acquired last month (owner as of the end-of-month snapshot).</span>}</div>
-        <div>This month so far: <strong style={{ color: COLORS.text }}>{fmt(r.mtd)}</strong> pickups ({fmt(r.mtdAvg, 1)} per working day), <strong style={{ color: COLORS.text }}>{fmt(r.dl)}</strong> delivered parcels, revenue <strong style={{ color: COLORS.text }}>{fmt(r.rev)}</strong> EGP, ASP <strong style={{ color: COLORS.text }}>{r.asp == null ? "—" : fmt(r.asp, 2)}</strong>.</div>
-        {r.prev != null && <div>Last month: <strong style={{ color: COLORS.text }}>{fmt(r.prev)}</strong> pickups in total, about {fmt(r.prevAvg, 1)} per working day from the first pickup. {r.status === "Churned" ? <span style={{ color: COLORS.coral }}>No pickup yet this month (provisional until month end).</span> : null}</div>}
+  const table = (title, info, head, rows, cell) => (
+    <div style={{ marginBottom: 22 }}>
+      <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, display: "flex", alignItems: "center" }}>{title} <span style={{ color: COLORS.textFaint, fontWeight: 400, marginLeft: 6 }}>({rows.length})</span><InfoTip text={info} /></div>
+      <div style={{ overflowX: "auto", border: `1px solid ${COLORS.panelBorder}`, borderRadius: 10, background: COLORS.panel }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+          <thead><tr style={{ background: "#F5F6F9" }}>{head.map((x) => <th key={x} style={th}>{x}</th>)}</tr></thead>
+          <tbody>{rows.length === 0 ? <tr><td colSpan={head.length} style={{ padding: 16, textAlign: "center", color: COLORS.textFaint }}>No merchants</td></tr> : rows.map((r) => <tr key={r[0]} style={{ borderTop: `1px solid ${COLORS.panelBorder}` }}>{cell(r)}</tr>)}</tbody>
+        </table>
       </div>
-    </td></tr>);
-  if (pfOpen) {
-    const byId = new Map(LEAD_ROWS.map((r) => [r.id, r]));
-    const pfm = all.map((r) => byId.get(r.id)).filter(Boolean);
-    const pfAn = { ...mpSubsetAnalysis(pfm), synthetic: true };
-    return <PortfolioScreen am={s.name} amData={{ target: goal, team: s.team, base: pfm.length, kind: "sales", skipped: all.length - pfm.length }} analysis={pfAn} onBack={() => setPfOpen(false)} />;
-  }
+    </div>
+  );
   return (
     <OrgShell nav={nav} current="sales">
       <OrgCrumbs items={leadCrumbs(nav, s.headId, s.tlId, s.name)} />
-      <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-        <OrgSelect value={s.id} onChange={(id) => { nav.go("sales", id); setOpenId(null); }} options={nav.allowedSales.map((x) => ({ value: x.id, label: x.name }))} />
-        <button onClick={() => setPfOpen(true)} style={{ padding: "9px 16px", borderRadius: 8, border: `1px solid ${COLORS.blue}`, background: COLORS.panel, color: COLORS.blue, fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>Portfolio overview →</button>
-      </div>
-      <div style={{ color: COLORS.textMuted, fontSize: 13, margin: "6px 0 18px" }}>sales · {s.team} · {all.length} merchants (new this month and last month's acquisitions) · data as of {DATA.asOf}</div>
-      <AchievementBar pct={ofTarget * 100} detail={fmt(pk) + " of " + fmt(goal) + " new pickups"} />
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12, marginBottom: 16 }}>
-        <OrgCard label="Current total achievement vs target" info="New pickups so far this month (merchants whose first pickup was this month and who have this sales rep as owner), against the monthly new-pickups target of the targets sheet." value={fmt(pk)} accent={col} sub={<span>{fmt(ofTarget * 100, 1)}% of the monthly target ({fmt(goal)})</span>}><OrgBar pct={Math.min(1, ofTarget)} color={col} /></OrgCard>
-        <OrgCard label="ASP (fresh sales)" info={ORG_INFO.aspFresh} value={a.actual == null ? "—" : fmt(a.actual, 1)} accent={a.actual != null && a.target ? (a.actual >= a.target ? COLORS.teal : COLORS.coral) : undefined} sub={a.target ? "target " + fmt(a.target, 1) + " · " + (a.actual != null ? (a.actual >= a.target ? "+" : "") + fmt(a.actual - a.target, 1) + " vs target" : "—") : "no target"} />
-        {ch ? <OrgCard label="Churn (last month's new merchants)" info={ORG_INFO.churn} value={orgPct(ch.actual)} sub={<span>{ch.target != null ? "target ≤ " + orgPct(ch.target) : "no target"} · {fmt(ch.base)} merchants · <em>provisional</em></span>} /> : <OrgCard label="Churn (last month's new merchants)" info={ORG_INFO.churn} value="—" sub="no merchants acquired last month" />}
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 22 }}>
-        <StatCard info="The sales rep's monthly new-pickups target, from the October targets sheet." label="Monthly target" value={fmt(goal)} sub="" />
-        <StatCard info="Monthly target ÷ working days in the month: the new pickups per working day the month needs on average." label="Target daily avg" value={fmt(goal / full)} sub="monthly target ÷ working days" />
-        <StatCard info="New pickups so far this month ÷ working days elapsed (Fridays excluded)." label={"Actual daily avg (MTD, " + el + "d)"} value={fmt(avgDaily)} sub="pickups / day" />
-        <StatCard info="Run rate = new pickups so far + the current daily average × the remaining working days: where the month ends if the pace does not change." label="Run rate (month end)" value={"≈ " + fmt(run)} sub={fmt(runPct * 100, 1) + "% of monthly target"} accent={runPct >= 1 ? COLORS.teal : COLORS.coral} />
-      </div>
-      <SectionLabel>Merchants &middot; new, active, churned (adds up to {all.length})</SectionLabel>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 22 }}>
-        <StatCard info="Merchants whose first pickup was this month and who have this sales rep as owner." label="New" value={s.newList.length} sub="first pickup this month" accent={COLORS.purple} />
-        <StatCard info="Last month's new merchants that already have a pickup this month." label="Active" value={all.filter((r) => r.status === "Active").length} sub={"of " + s.cohortList.length + " acquired last month"} accent={COLORS.teal} />
-        <StatCard info="Last month's new merchants with no pickup yet this month. Provisional until month end." label="Churned" value={all.filter((r) => r.status === "Churned").length} sub="no pickups this month yet" accent={COLORS.slate} />
-      </div>
-      {pk < goal && goal > 0 && (
-        <div style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "14px 16px", borderRadius: 10, marginBottom: 22, background: COLORS.coralDim, border: `1px solid ${COLORS.coral}` }}>
-          <span style={{ fontSize: 20, fontWeight: 700, fontFamily: "'IBM Plex Mono', monospace", color: COLORS.coral }}>{fmt((1 - ofTarget) * 100, 1)}%</span>
-          <span style={{ fontSize: 13, color: COLORS.textMuted }}>short of the monthly target ({fmt(goal - pk)} new pickups still needed) &mdash; currently at {fmt(ofTarget * 100, 1)}% of the monthly target.</span>
-        </div>
-      )}
-      <SectionLabel>Merchant detail &middot; click a row for more</SectionLabel>
-      <div style={{ display: "flex", gap: 6, alignItems: "center", margin: "-6px 0 10px", flexWrap: "wrap" }}>
-        {[["pickups", "Pickups"], ["asp", "ASP"]].map(([k, l]) => (
-          <button key={k} onClick={() => { setView(k); setSortKey(k === "asp" ? "gapC" : "mtdAvg"); setSortDir(k === "asp" ? "asc" : "desc"); setOpenId(null); }} style={{ padding: "5px 14px", fontSize: 12, fontWeight: 600, borderRadius: 999, cursor: "pointer", border: `1px solid ${view === k ? COLORS.text : COLORS.panelBorder2}`, background: view === k ? COLORS.text : COLORS.panel, color: view === k ? "#fff" : COLORS.textMuted }}>{l}</button>
-        ))}
-        <InfoTip text="Switch the table between pickups and ASP. ASP = delivery revenue ÷ delivered parcels, Oct 1–4, against this sales rep's ASP target." />
-        <span style={{ flex: 1 }} />
-        <span style={{ fontSize: 12, color: COLORS.textMuted }}>Filter:</span>
+      <OrgSelect value={s.id} onChange={(id) => nav.go("sales", id)} options={nav.allowedSales.map((x) => ({ value: x.id, label: x.name }))} />
+      <div style={{ color: COLORS.textMuted, fontSize: 13, margin: "6px 0 18px" }}>sales · {s.team} · weights {s.w.map((x) => Math.round(x * 100) + "%").join(" / ")} (new pickups / ASP / churn)</div>
+      <OrgScoreCards sc={sc} kind="sales" />
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
+        <span style={{ fontSize: 12, color: COLORS.textMuted }}>Filter merchants:</span>
         <input value={fid} onChange={(e) => setFid(e.target.value)} placeholder="Business ID" style={inp} />
         <input value={fname} onChange={(e) => setFname(e.target.value)} placeholder="Business name" style={inp} />
         {(fid || fname) && <button onClick={() => { setFid(""); setFname(""); }} style={{ fontSize: 12, padding: "6px 10px", borderRadius: 8, border: `1px solid ${COLORS.panelBorder2}`, background: COLORS.panel, cursor: "pointer" }}>Clear</button>}
       </div>
-      {view === "pickups" && (
-        <div style={{ display: "flex", gap: 6, alignItems: "center", margin: "0 0 10px" }}>
-          <span style={{ fontSize: 11.5, color: COLORS.textFaint, textTransform: "uppercase", letterSpacing: ".06em", marginRight: 2 }}>Compare with</span>
-          {[["prev", "Last month"], ["target", "Merchants contribution"]].map(([k, l]) => (
-            <button key={k} onClick={() => { setCmp(k); setSortKey(k === "target" ? "mtd" : "mtdAvg"); setSortDir("desc"); setOpenId(null); }} style={{ padding: "5px 14px", fontSize: 12, fontWeight: 600, borderRadius: 999, cursor: "pointer", border: `1px solid ${cmp === k ? COLORS.text : COLORS.panelBorder2}`, background: cmp === k ? COLORS.text : COLORS.panel, color: cmp === k ? "#fff" : COLORS.textMuted }}>{l}</button>
-          ))}
-          <InfoTip text="Last month: this month's average per working day against last month's, with GR % and run rate. Merchants contribution: how much of this sales rep's monthly new-pickups target each merchant brings. Sales merchants have no weight of their own, so the table shows each merchant's share of the rep's target." />
-        </div>
-      )}
-      {view === "pickups" ? (
-        <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.panelBorder}`, borderRadius: 12, overflow: "hidden", marginBottom: 14 }}>
-          <div style={{ maxHeight: 520, overflow: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-              <thead><tr style={{ position: "sticky", top: 0, background: "#F0F2F6", zIndex: 1 }}>
-                <Th onClick={() => onSort("name")} active={sortKey === "name"} dir={sortDir}>Merchant</Th>
-                {cmp === "target" ? (<>
-                <Th onClick={() => onSort("mtd")} active={sortKey === "mtd"} dir={sortDir} align="right">MTD total volume</Th>
-                <Th onClick={() => onSort("ofGoal")} active={sortKey === "ofGoal"} dir={sortDir} align="right">% of rep target</Th>
-                <Th onClick={() => onSort("shareP")} active={sortKey === "shareP"} dir={sortDir} align="right">Share of rep pickups</Th>
-                <Th onClick={() => onSort("run")} active={sortKey === "run"} dir={sortDir} align="right">Run rate</Th>
-                <Th onClick={() => onSort("runOfGoal")} active={sortKey === "runOfGoal"} dir={sortDir} align="right">Run rate % of target</Th>
-                </>) : (<>
-                <Th onClick={() => onSort("mtdAvg")} active={sortKey === "mtdAvg"} dir={sortDir} align="right">MTD avg daily</Th>
-                <Th onClick={() => onSort("prevAvg")} active={sortKey === "prevAvg"} dir={sortDir} align="right">Last month avg daily</Th>
-                <Th onClick={() => onSort("delta")} active={sortKey === "delta"} dir={sortDir} align="right">Delta</Th>
-                <Th onClick={() => onSort("gr")} active={sortKey === "gr"} dir={sortDir} align="right">GR %</Th>
-                <Th onClick={() => onSort("mtd")} active={sortKey === "mtd"} dir={sortDir} align="right">MTD total volume</Th>
-                <Th onClick={() => onSort("prev")} active={sortKey === "prev"} dir={sortDir} align="right">Last month total volume</Th>
-                <Th onClick={() => onSort("run")} active={sortKey === "run"} dir={sortDir} align="right">Run rate</Th>
-                </>)}
-                <Th onClick={() => onSort("status")} active={sortKey === "status"} dir={sortDir} align="right">Status</Th>
-              </tr></thead>
-              <tbody>
-                {shown.length === 0 ? <tr><td colSpan={cmp === "target" ? 7 : 9} style={{ padding: 16, textAlign: "center", color: COLORS.textFaint }}>No merchants</td></tr> : sorted(shown).map((r) => (
-                  <React.Fragment key={r.id}>
-                    <tr onClick={() => setOpenId(openId === r.id ? null : r.id)} style={{ borderTop: `1px solid ${COLORS.panelBorder}`, cursor: "pointer", background: openId === r.id ? "rgba(76,110,245,0.06)" : "transparent" }}>
-                      {nameCell(r, openId === r.id)}
-                      {cmp === "target" ? (<>
-                      <td style={mono}>{fmt(r.mtd)}</td>
-                      <td style={{ ...mono, color: COLORS.textMuted }}>{r.ofGoal == null ? "—" : fmt(r.ofGoal * 100, 2) + "%"}</td>
-                      <td style={{ ...mono, color: COLORS.textMuted }}>{r.shareP == null ? "—" : fmt(r.shareP * 100, 1) + "%"}</td>
-                      <td style={{ ...mono, color: COLORS.textMuted }}>{fmt(r.run, 0)}</td>
-                      <td style={{ ...mono, color: COLORS.textMuted }}>{r.runOfGoal == null ? "—" : fmt(r.runOfGoal * 100, 2) + "%"}</td>
-                      </>) : (<>
-                      <td style={mono}>{fmt(r.mtdAvg, 1)}</td>
-                      <td style={{ ...mono, color: COLORS.textMuted }}>{r.prevAvg == null ? "—" : fmt(r.prevAvg, 1)}</td>
-                      <td style={{ ...mono, color: dcol(r.delta) }}>{sgn(r.delta, 1)}</td>
-                      <td style={{ ...mono, color: dcol(r.gr) }}>{r.gr == null ? "—" : sgn(r.gr, 1) + "%"}</td>
-                      <td style={{ ...mono, color: COLORS.textMuted }}>{fmt(r.mtd)}</td>
-                      <td style={{ ...mono, color: COLORS.textMuted }}>{r.prev == null ? "—" : fmt(r.prev)}</td>
-                      <td style={{ ...mono, color: COLORS.textMuted }}>{fmt(r.run, 0)}</td>
-                      </>)}
-                      <td style={{ padding: "9px 14px", textAlign: "right" }}><CategoryBadge category={r.status} /></td>
-                    </tr>
-                    {openId === r.id && drill(r, cmp === "target" ? 7 : 9)}
-                  </React.Fragment>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ) : (T == null || D <= 0) ? <MPBanner text="No ASP target or no delivered parcels yet, so the ASP analysis cannot be shown." /> : (
-        <div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12, marginBottom: 12 }}>
-            <OrgCard label="Total revenues" info="Total delivery revenue of the merchants with at least one delivered parcel, Oct 1–4 (EGP)." value={fmt(REV)} sub="EGP" />
-            <OrgCard label="Delivered parcels" info="Delivered parcels of those merchants, Oct 1–4." value={fmt(D)} sub={elig.length + " of " + all.length + " merchants"} />
-            <OrgCard label="Portfolio ASP" info="Total revenues ÷ total delivered parcels. Never the simple average of the merchants' ASPs." value={fmt(P, 2)} accent={P >= T ? COLORS.teal : COLORS.coral} sub={"target " + fmt(T, 2)} />
-            <OrgCard label="Net ASP gap" info="Portfolio ASP minus target ASP, in EGP per parcel. It is the total of the ASP Gap Contribution column." value={aspSgn(P - T, 2)} accent={P >= T ? COLORS.teal : COLORS.coral} sub={P >= T ? "at or above target" : "short by " + fmt(Math.abs(P - T), 2) + " EGP per parcel"} />
-          </div>
-          <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.panelBorder}`, borderRadius: 12, overflow: "hidden", marginBottom: 14 }}>
-            <div style={{ maxHeight: 520, overflow: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                <thead><tr style={{ position: "sticky", top: 0, background: "#F0F2F6", zIndex: 1 }}>
-                  <Th onClick={() => onSort("name")} active={sortKey === "name"} dir={sortDir}>Merchant</Th>
-                  <Th onClick={() => onSort("dl")} active={sortKey === "dl"} dir={sortDir} align="right">Parcels</Th>
-                  <Th onClick={() => onSort("asp")} active={sortKey === "asp"} dir={sortDir} align="right">Merchant ASP</Th>
-                  <Th onClick={() => onSort("share")} active={sortKey === "share"} dir={sortDir} align="right">Parcel share</Th>
-                  <Th onClick={() => onSort("gapC")} active={sortKey === "gapC"} dir={sortDir} align="right">ASP gap contribution</Th>
-                  <Th onClick={() => onSort("status")} active={sortKey === "status"} dir={sortDir} align="right">Status</Th>
-                </tr></thead>
-                <tbody>
-                  {aspRows.length === 0 ? <tr><td colSpan={6} style={{ padding: 16, textAlign: "center", color: COLORS.textFaint }}>No merchants</td></tr> : sorted(aspRows).map((r) => (
-                    <React.Fragment key={r.id}>
-                      <tr onClick={() => setOpenId(openId === r.id ? null : r.id)} style={{ borderTop: `1px solid ${COLORS.panelBorder}`, cursor: "pointer", background: openId === r.id ? "rgba(76,110,245,0.06)" : "transparent" }}>
-                        {nameCell(r, openId === r.id)}
-                        <td style={{ ...mono, color: COLORS.textMuted }}>{fmt(r.dl)}</td>
-                        <td style={{ ...mono, fontWeight: 600 }}>{fmt(r.asp, 2)}</td>
-                        <td style={mono}>{r.share == null ? "—" : fmt(r.share * 100, 2) + "%"}</td>
-                        <td style={{ ...mono, color: dcol(r.gapC) }}>{r.gapC == null ? "—" : aspSgn(r.gapC, 2)}</td>
-                        <td style={{ padding: "9px 14px", textAlign: "right" }}><CategoryBadge category={r.status} /></td>
-                      </tr>
-                      {openId === r.id && drill(r, 6)}
-                    </React.Fragment>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-          <div style={{ fontSize: 12, color: COLORS.textFaint, padding: "4px 4px 14px", lineHeight: 1.5 }}>ASP gap contribution = parcel share × (merchant ASP − target ASP), in EGP per parcel; the column adds up to the net ASP gap.</div>
-        </div>
-      )}
-      <div style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12, color: COLORS.textFaint, padding: "10px 4px", lineHeight: 1.5 }}>
-        <Info size={14} style={{ marginTop: 2, flexShrink: 0 }} />
-        <span>New merchants have no last-month baseline, so Delta and GR % show &mdash; for them. For last month's acquisitions, "Last month" is their pickups in last month divided by the working days from their first pickup to the month end, compared with this month's pickups per working day so far. Churned = no pickup yet this month (provisional). Run rate = MTD pickups + MTD avg daily &times; the remaining working days.</span>
-      </div>
+      {table("New merchants this month", "Merchants whose first pickup was this month (Oct 1–4) with this sales rep as owner (public.businesses.firstpickuppickedupat). Pickups, delivered and ASP are Oct 1–4.", ["Business", "Business ID", "First pickup", "Pickups", "Delivered", "ASP"], newRows,
+        (r) => (<><td style={td}>{r[1]}</td><td style={{ ...td, fontFamily: "'IBM Plex Mono', monospace" }}>{r[0]}</td><td style={td}>{r[2]}</td><td style={{ ...td, fontFamily: "'IBM Plex Mono', monospace" }}>{fmt(r[3])}</td><td style={{ ...td, fontFamily: "'IBM Plex Mono', monospace" }}>{fmt(r[4])}</td><td style={{ ...td, fontFamily: "'IBM Plex Mono', monospace" }}>{asp(r)}</td></>))}
+      {table("Last month's acquisitions (churn base)", "Merchants this sales rep activated in September (first pickup in September), owner as of the end-of-September snapshot (public.businesses_monthly_snapshot). 'No pickup yet' counts as churned so far; it is provisional until month end.", ["Business", "Business ID", "First pickup", "Sep pickups", "Oct pickups", "Status"], cohortRows,
+        (r) => (<><td style={td}>{r[1]}</td><td style={{ ...td, fontFamily: "'IBM Plex Mono', monospace" }}>{r[0]}</td><td style={td}>{r[2]}</td><td style={{ ...td, fontFamily: "'IBM Plex Mono', monospace" }}>{fmt(r[6])}</td><td style={{ ...td, fontFamily: "'IBM Plex Mono', monospace" }}>{fmt(r[3])}</td><td style={td}><span style={{ color: r[3] > 0 ? COLORS.teal : COLORS.coral, fontWeight: 600 }}>{r[3] > 0 ? "Active" : "No pickup yet"}</span></td></>))}
     </OrgShell>
   );
 }
@@ -404,8 +235,6 @@ function AmScoreCards({ amName, an }) {
   const col = ofTarget >= 1 ? COLORS.teal : COLORS.coral;
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12, marginBottom: 16 }}>
-      <OrgCard label="Current total achievement vs target" info="Pickups so far this month across all merchants of the portfolio, against the monthly pickups target of the targets sheet." value={fmt(pk)} accent={col}
-        sub={<span>{fmt(ofTarget * 100, 1)}% of the monthly target ({fmt(goal)})</span>}><OrgBar pct={Math.min(1, ofTarget)} color={col} /></OrgCard>
       <OrgCard label="ASP" info={ORG_INFO.asp} value={asp.actual == null ? "—" : fmt(asp.actual, 1)} accent={asp.actual != null ? (asp.actual >= asp.target ? COLORS.teal : COLORS.coral) : undefined}
         sub={`target ${fmt(asp.target, 1)} · ${asp.actual != null ? (asp.actual >= asp.target ? "+" : "") + fmt(asp.actual - asp.target, 1) : "—"} vs target`} />
       {a.t.retention != null ? (
@@ -413,6 +242,8 @@ function AmScoreCards({ amName, an }) {
       ) : (
         <OrgCard label="Retention" info="Startups AMs have no retention target in the October sheet (their weights are 70% pickups and 30% ASP)." value="—" sub="no retention target for this team" />
       )}
+      <OrgCard label="Current total achievement vs target" info="Pickups so far this month across all merchants of the portfolio, against the monthly pickups target of the targets sheet." value={fmt(pk)} accent={col}
+        sub={<span>{fmt(ofTarget * 100, 1)}% of the monthly target ({fmt(goal)})</span>}><OrgBar pct={Math.min(1, ofTarget)} color={col} /></OrgCard>
     </div>
   );
 }
@@ -491,7 +322,7 @@ function AspTop5({ title, list, info }) {
       {list.length === 0 ? <div style={{ fontSize: 12, color: COLORS.textFaint }}>None</div> : list.map((r) => (
         <div key={r.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12, padding: "2px 0" }}>
           <span style={{ color: COLORS.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.name}</span>
-          <span style={{ fontFamily: "'IBM Plex Mono', monospace", color: r.aspGapC < 0 ? COLORS.coral : COLORS.teal, whiteSpace: "nowrap" }}>{aspSgn(r.aspGapC, 2)}</span>
+          <span style={{ fontFamily: "'IBM Plex Mono', monospace", color: r.aspGapC < 0 ? COLORS.coral : COLORS.teal, whiteSpace: "nowrap" }}>{aspSgn(r.aspGapC, 3)}</span>
         </div>
       ))}
     </div>
@@ -503,9 +334,9 @@ function AspSummary({ rows, c, an }) {
   return (
     <div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12, marginBottom: 12 }}>
-        <OrgCard label="Total revenues" info="Total delivery revenue of the merchants with at least one delivered parcel, Oct 1–4 (EGP)." value={fmt(c.REV)} sub="EGP" />
+        <OrgCard label="Total eligible revenue" info="Delivery revenue of merchants with at least one delivered parcel, Oct 1–4 (EGP)." value={fmt(c.REV)} sub="EGP" />
         <OrgCard label="Delivered parcels" info="Delivered parcels of the eligible merchants, Oct 1–4." value={fmt(c.D)} sub={c.nElig + " eligible of " + c.nAll + " merchants"} />
-        <OrgCard label="Portfolio ASP" info="Total revenues ÷ total delivered parcels. Never the simple average of the merchants' ASPs." value={fmt(c.asp, 2)} accent={gap >= 0 ? COLORS.teal : COLORS.coral} sub={"target " + fmt(T, 2)} />
+        <OrgCard label="Portfolio ASP" info="Total eligible revenue ÷ total delivered parcels. Never the simple average of the merchants' ASPs." value={fmt(c.asp, 2)} accent={gap >= 0 ? COLORS.teal : COLORS.coral} sub={"target " + fmt(T, 2)} />
         <OrgCard label="Net ASP gap" info="Portfolio ASP minus target ASP, in EGP per parcel. It is the total of the ASP Gap Contribution column: each merchant is responsible for a part of it." value={aspSgn(gap, 2)} accent={gap >= 0 ? COLORS.teal : COLORS.coral} sub={gap >= 0 ? "at or above target" : "portfolio is " + fmt(Math.abs(gap), 2) + " EGP per parcel short"} />
       </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
@@ -678,7 +509,7 @@ function AspMerchantTable({ rows, sortKey, sortDir, onSort, expandedId, onRowCli
                     <td style={{ ...td, color: COLORS.textMuted }}>{fmt(m.aspDlv)}</td>
                     <td style={{ ...td, fontWeight: 600 }}>{fmt(m.aspTotal, 2)}</td>
                     <td style={td}>{m.aspShare == null ? "—" : fmt(m.aspShare * 100, 2) + "%"}</td>
-                    <td title={aspGapHover(m, c)} style={{ ...td, color: colored(m.aspGapC) }}>{m.aspGapC == null ? "—" : aspSgn(m.aspGapC, 2)}</td>
+                    <td title={aspGapHover(m, c)} style={{ ...td, color: colored(m.aspGapC) }}>{m.aspGapC == null ? "—" : aspSgn(m.aspGapC, 3)}</td>
                     <td style={{ ...td, color: m.aspRevGap == null ? COLORS.textFaint : m.aspRevGap > 0 ? COLORS.coral : COLORS.teal }}>{m.aspRevGap == null ? "—" : aspSgn(m.aspRevGap, 0)}</td>
                     <td style={{ padding: "9px 14px", whiteSpace: "nowrap" }}>{m.aspGroup ? <span style={{ background: ASP_GROUP_COLOR[m.aspGroup][0], color: ASP_GROUP_COLOR[m.aspGroup][1], borderRadius: 999, padding: "2px 10px", fontSize: 11.5, fontWeight: 600 }}>{m.aspGroup}</span> : "—"}</td>
                     <td style={{ ...td, color: COLORS.textMuted }}>{m.aspShip == null ? "—" : fmt(m.aspShip, 2)}</td>
