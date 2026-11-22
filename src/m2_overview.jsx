@@ -35,7 +35,7 @@ function MPDateRange({ range, setRange }) {
     if (from > to) { if (k === "from") to = from; else from = to; }
     setRange({ from, to });
   };
-  const inp = { padding: "6px 9px", borderRadius: 8, border: `1px solid ${COLORS.panelBorder2}`, fontSize: 12.5, fontFamily: MP_MONO, background: COLORS.panel, color: COLORS.text };
+  const inp = { padding: "6px 9px", borderRadius: 12, border: `1px solid ${COLORS.panelBorder2}`, fontSize: 12.5, fontFamily: MP_MONO, background: COLORS.panel, color: COLORS.text };
   const presets = [["YTD", MP_RANGE_MIN], ["Last 3 months", "2026-07-01"], ["Sep → Oct", "2026-09-01"]];
   return (
     <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -51,6 +51,80 @@ function MPDateRange({ range, setRange }) {
   );
 }
 
+// ---- trend cards with their own view buttons ----
+function mpAvg(vals) { const t = vals.filter(mpOk); return t.length ? t.reduce((a, b) => a + b, 0) / t.length : null; }
+// "Peak X (label) · Low Y (label)" under a trend
+function MPRange({ vals, labels, f, partialLast }) {
+  const idx = vals.map((v, i) => [v, i]).filter(([v, i]) => mpOk(v) && !(partialLast && i === vals.length - 1));
+  if (idx.length < 2) return null;
+  const hi = idx.reduce((a, b) => (b[0] > a[0] ? b : a)), lo = idx.reduce((a, b) => (b[0] < a[0] ? b : a));
+  return <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 4 }}>Peak <strong>{f(hi[0])}</strong> ({labels[hi[1]]}) · Low <strong>{f(lo[0])}</strong> ({labels[lo[1]]})</div>;
+}
+function MPActiveCard({ m, labels, kind, partialLast }) {
+  const [mode, setMode] = useState("Merchants");
+  const base = (MP_PF && MP_PF.count) || 0, pct = mode !== "Merchants";
+  const vals = m.map((p) => (pct ? (base && mpOk(p.active) ? (p.active / base) * 100 : null) : p.active));
+  const f = pct ? (v) => mpPctStr(v, 1) : (v) => fmt(v);
+  const insight = mpInsight({ values: vals, labels, kind, partialLast, good: "up", rate: pct, fmtFn: f });
+  return (
+    <MPChartCard title="Active merchants" info={"Merchants with at least one pickup in the period. 'Share of portfolio' = active merchants ÷ the " + base + " merchants of this portfolio."} insight={insight}>
+      <div style={{ marginBottom: 6 }}><MPPillRow tabs={["Merchants", "Share of portfolio"]} active={mode} onChange={setMode} /></div>
+      <MPLineChart data={m.map((p, i) => ({ x: labels[i], v: pct ? vals[i] : p.active }))} xKey="x" series={[{ key: "v", label: pct ? "Share of portfolio" : "Active merchants", color: COLORS.chart }]}
+        partialLast={partialLast} fmtFn={f} yFormat={pct ? "pct" : undefined} zeroBase={!pct} />
+      <MPRange vals={vals} labels={labels} f={f} partialLast={partialLast} />
+    </MPChartCard>
+  );
+}
+function MPPerActiveCard({ m, labels, kind, partialLast }) {
+  const vals = m.map((p) => (p.active > 0 ? p.vol / p.active : null));
+  const insight = mpInsight({ values: vals, labels, kind, partialLast, good: "up", fmtFn: (v) => fmt(v, 1) });
+  return (
+    <MPChartCard title="Pickups per active merchant" info="Pickups ÷ merchants with at least one pickup in the same period: how much the average active merchant ships." insight={insight}>
+      <MPLineChart height={150} data={m.map((p, i) => ({ x: labels[i], v: vals[i] }))} xKey="x" series={[{ key: "v", label: "Pickups per active merchant", color: COLORS.chart }]} zeroBase={false} partialLast={partialLast} fmtFn={(v) => fmt(v, 1)} />
+      <MPRange vals={vals} labels={labels} f={(v) => fmt(v, 1)} partialLast={partialLast} />
+    </MPChartCard>
+  );
+}
+function MPAspCard({ m, labels, kind, partialLast }) {
+  const tot = m.map((p) => p.asp);   // (shipping + VAS revenue) ÷ delivered parcels
+  const insight = mpInsight({ values: tot, labels, kind, partialLast, good: "up", fmtFn: (v) => fmt(v, 1) });
+  return (
+    <MPChartCard title="ASP" info="Average selling price in EGP = (shipping revenue + VAS revenue) ÷ delivered parcels." insight={insight}>
+      <MPLineChart height={150} data={m.map((p, i) => ({ x: labels[i], v: tot[i] }))} xKey="x" series={[{ key: "v", label: "ASP", color: COLORS.chart }]} zeroBase={false} partialLast={partialLast} fmtFn={(v) => fmt(v, 1)} />
+      <MPRange vals={tot} labels={labels} f={(v) => fmt(v, 1)} partialLast={partialLast} />
+    </MPChartCard>
+  );
+}
+function MPRateCard({ title, field, color, threshold, info, m, labels, kind, partialLast }) {
+  const vals = m.map((p) => p[field]);
+  const insight = mpInsight({ values: vals, labels, kind, partialLast, good: "up", rate: true, fmtFn: (v) => mpPctStr(v, 1) });
+  const complete = vals.filter((v, i) => mpOk(v) && !(partialLast && i === vals.length - 1));
+  const below = threshold ? complete.filter((v) => v <= threshold.value).length : 0;
+  return (
+    <MPChartCard title={title} info={info} insight={insight}>
+      <MPLineChart data={m.map((p, i) => ({ x: labels[i], v: vals[i] }))} xKey="x" series={[{ key: "v", label: title, color }]} zeroBase={false} yFormat="pct" partialLast={partialLast} />
+      <MPRange vals={vals} labels={labels} f={(v) => mpPctStr(v, 1)} partialLast={partialLast} />
+      {threshold && complete.length > 0 && <div style={{ fontSize: 11, marginTop: 2, color: below ? COLORS.coral : COLORS.teal }}>{below ? below + " of " + complete.length + " periods at or below " + threshold.value + "%" : "No period at or below " + threshold.value + "%"}</div>}
+    </MPChartCard>
+  );
+}
+function MPIncidentCard({ title, field, color, info, m, labels, kind, partialLast, countLabel = "Parcels" }) {
+  const [mode, setMode] = useState(countLabel);
+  const rate = mode !== countLabel;
+  const vals = m.map((p) => (rate ? (p.vol ? (p[field] / p.vol) * 1000 : null) : p[field]));
+  const f = rate ? (v) => fmt(v, 1) : (v) => fmt(v);
+  const insight = mpInsight({ values: vals, labels, kind, partialLast, good: "down", fmtFn: f });
+  return (
+    <MPChartCard title={title} info={info} insight={insight}>
+      <div style={{ marginBottom: 6 }}><MPPillRow tabs={[countLabel, "Per 1,000 pickups"]} active={mode} onChange={setMode} /></div>
+      {rate
+        ? <MPLineChart data={m.map((p, i) => ({ x: labels[i], v: vals[i] }))} xKey="x" series={[{ key: "v", label: title + " per 1,000 pickups", color }]} partialLast={partialLast} fmtFn={f} />
+        : <MPBarChart data={m.map((p, i) => ({ x: labels[i], v: p[field] }))} xKey="x" series={[{ key: "v", label: title, color }]} partialLast={partialLast} />}
+      <MPRange vals={vals} labels={labels} f={f} partialLast={partialLast} />
+    </MPChartCard>
+  );
+}
+
 // ---- the chart set (shared by Overall overview and Current month) ----
 function MPMetricCharts({ data }) {
   const { rows, labels, kind, partialLast } = data;
@@ -59,55 +133,42 @@ function MPMetricCharts({ data }) {
   const hasFul = m.some((p) => p.ful > 0);
   const ins = (vals, o) => mpInsight({ values: vals, labels, kind, partialLast, ...o });
   const pctIns = (vals, good) => ins(vals, { rate: true, good, fmtFn: (v) => mpPctStr(v, 1) });
-  const lostDam = m.map((p) => p.lost + p.dam);
   return (
     <>
       <MPSection title="Growth" />
       <MPGrid2>
         <MPChartCard title="Volume" info="Pickups per period, split LM vs Box (mart: ecomm, box and fulfillment pickups)." insight={ins(m.map((p) => p.vol), { good: "up" })}>
           <MPBarChart data={m.map((p, i) => ({ x: labels[i], LM: p.lm, Box: p.box, ...(hasFul ? { Fulfillment: p.ful } : {}) }))} xKey="x" stacked partialLast={partialLast}
-            series={[{ key: "LM", label: "LM", color: COLORS.blue }, { key: "Box", label: "Box", color: COLORS.teal }, ...(hasFul ? [{ key: "Fulfillment", label: "Fulfillment", color: COLORS.purple }] : [])]} />
+            series={[{ key: "LM", label: "LM", color: COLORS.chart }, { key: "Box", label: "Box", color: COLORS.chart2 }, ...(hasFul ? [{ key: "Fulfillment", label: "Fulfillment", color: COLORS.sand }] : [])]} />
         </MPChartCard>
         <MPChartCard title="Revenue" info="Delivery revenue in EGP = shipping + VAS (mart: delivery_revenue_shipping and delivery_revenue_vas_total)." insight={ins(m.map((p) => p.rev), { good: "up" })}>
           <MPBarChart data={m.map((p, i) => ({ x: labels[i], Shipping: p.ship, VAS: p.vas }))} xKey="x" stacked partialLast={partialLast}
-            series={[{ key: "Shipping", label: "Shipping", color: COLORS.amber }, { key: "VAS", label: "VAS", color: COLORS.purple }]} />
+            series={[{ key: "Shipping", label: "Shipping", color: COLORS.chart }, { key: "VAS", label: "VAS", color: COLORS.chart2 }]} />
         </MPChartCard>
       </MPGrid2>
-      {MP_MODE === "portfolio" && (
-        <MPGrid2>
-          <MPChartCard title="Active merchants" info="Merchants with at least one pickup in the period." insight={ins(m.map((p) => p.active), { good: "up" })}>
-            <MPLineChart data={m.map((p, i) => ({ x: labels[i], v: p.active }))} xKey="x" series={[{ key: "v", label: "Active merchants", color: COLORS.blue }]} partialLast={partialLast} fmtFn={(v) => fmt(v)} />
-          </MPChartCard>
-        </MPGrid2>
-      )}
+      {MP_MODE === "portfolio" && <MPGrid2><MPActiveCard m={m} labels={labels} kind={kind} partialLast={partialLast} /><MPPerActiveCard m={m} labels={labels} kind={kind} partialLast={partialLast} /></MPGrid2>}
 
       <MPSection title="Pricing & cost" />
       <MPGrid2>
-        <MPChartCard title="ASP" info="Average selling price = revenue ÷ pickups. Shipping ASP uses shipping revenue, VAS ASP uses VAS revenue." insight={ins(m.map((p) => p.aspS), { good: "up", fmtFn: (v) => fmt(v, 1) })}>
-          <div style={{ fontSize: 10.5, color: COLORS.textFaint, marginTop: -2 }}>Shipping (EGP / pickup)</div>
-          <MPLineChart height={96} data={m.map((p, i) => ({ x: labels[i], v: p.aspS }))} xKey="x" series={[{ key: "v", label: "Shipping", color: COLORS.amber }]} zeroBase={false} partialLast={partialLast} fmtFn={(v) => fmt(v, 1)} />
-          <div style={{ fontSize: 10.5, color: COLORS.textFaint, marginTop: 4 }}>VAS (EGP / pickup)</div>
-          <MPLineChart height={96} data={m.map((p, i) => ({ x: labels[i], v: p.aspV }))} xKey="x" series={[{ key: "v", label: "VAS", color: COLORS.purple }]} zeroBase={false} partialLast={partialLast} fmtFn={(v) => fmt(v, 2)} />
-        </MPChartCard>
+        <MPAspCard m={m} labels={labels} kind={kind} partialLast={partialLast} />
         <MPChartCard title="Compensation" info="Compensation paid to merchants, in EGP (mart: compensation_amount). Lower is better." insight={ins(m.map((p) => p.comp), { good: "down" })}>
-          <MPBarChart data={m.map((p, i) => ({ x: labels[i], Compensation: p.comp }))} xKey="x" series={[{ key: "Compensation", label: "Compensation", color: COLORS.coral }]} partialLast={partialLast} />
+          <MPBarChart data={m.map((p, i) => ({ x: labels[i], Compensation: p.comp }))} xKey="x" series={[{ key: "Compensation", label: "Compensation", color: COLORS.chart }]} partialLast={partialLast} />
         </MPChartCard>
       </MPGrid2>
 
       <MPSection title="Service quality" />
       <MPGrid2>
-        <MPChartCard title="DSR" info="Delivery success rate = dsr_numerator ÷ dsr_denominator from the mart. 'Low' means 65% or below. Complete periods only: recent parcels have no final outcome yet, so a running month or partial week is left blank." insight={pctIns(m.map((p) => p.dsr), "up")}>
-          <MPLineChart data={m.map((p, i) => ({ x: labels[i], v: p.dsr }))} xKey="x" series={[{ key: "v", label: "DSR", color: COLORS.teal }]} zeroBase={false} yFormat="pct" partialLast={partialLast} />
-        </MPChartCard>
-        <MPChartCard title="ASR" info="Attempt success rate = asr_numerator ÷ asr_denominator from the mart (no value on days without delivery attempts). Complete periods only: a running month or partial week is left blank." insight={pctIns(m.map((p) => p.asr), "up")}>
-          <MPLineChart data={m.map((p, i) => ({ x: labels[i], v: p.asr }))} xKey="x" series={[{ key: "v", label: "ASR", color: COLORS.blue }]} zeroBase={false} yFormat="pct" partialLast={partialLast} />
-        </MPChartCard>
+        <MPRateCard title="DSR" field="dsr" color={COLORS.chart} threshold={{ value: 65, label: "Low ≤65%" }} m={m} labels={labels} kind={kind} partialLast={partialLast}
+          info="Delivery success rate = dsr_numerator ÷ dsr_denominator from the mart. 'Low' means 65% or below. Complete periods only: recent parcels have no final outcome yet, so a running month or partial week is left blank." />
+        <MPRateCard title="ASR" field="asr" color={COLORS.chart} m={m} labels={labels} kind={kind} partialLast={partialLast}
+          info="Attempt success rate = asr_numerator ÷ asr_denominator from the mart (no value on days without delivery attempts). Complete periods only: a running month or partial week is left blank." />
       </MPGrid2>
 
       <MPSection title="Issues" />
-      <MPChartCard title="Lost & damaged" info="Parcels flagged lost or damaged in the period (mart: parcels_lost, parcels_damaged). Lower is better." insight={ins(lostDam, { good: "down" })}>
-        <MPBarChart data={m.map((p, i) => ({ x: labels[i], Lost: p.lost, Damaged: p.dam }))} xKey="x" partialLast={partialLast} series={[{ key: "Lost", label: "Lost", color: COLORS.purple }, { key: "Damaged", label: "Damaged", color: COLORS.coral }]} />
-      </MPChartCard>
+      <MPGrid2>
+        <MPIncidentCard title="Lost parcels" field="lost" color={COLORS.chart} m={m} labels={labels} kind={kind} partialLast={partialLast} info="Parcels flagged lost in the period (mart: parcels_lost). Lower is better. 'Per 1,000 pickups' removes the effect of volume." />
+        <MPIncidentCard title="Damaged parcels" field="dam" color={COLORS.chart} m={m} labels={labels} kind={kind} partialLast={partialLast} info="Parcels flagged damaged in the period (mart: parcels_damaged). Lower is better. 'Per 1,000 pickups' removes the effect of volume." />
+      </MPGrid2>
     </>
   );
 }
@@ -181,8 +242,7 @@ function MPPortfolioBlocks({ monthIdx, onOpenMerchant }) {
   const top5 = rank.slice(0, 5).reduce((s, r) => s + r.value, 0);
   const share = total ? Math.round((top5 / total) * 100) : 0;
   const a = pf.analysis;
-  const mix = [{ label: "Hit target", value: a.hitCount, color: COLORS.teal }, { label: "Didn't hit target", value: a.missedCount, color: COLORS.coral }, { label: "Churned", value: a.churnedCount, color: COLORS.slate }, { label: "New", value: a.newCount, color: COLORS.purple }];
-  const growth = ["Grower", "Stable", "Dropper"].map((g) => ({ label: g, value: a.merchants.filter((m) => m.growthStatus === g).length, color: g === "Grower" ? COLORS.teal : g === "Dropper" ? COLORS.coral : COLORS.slate }));
+  const mix = [{ label: "Grower", value: a.growerCount, color: COLORS.teal }, { label: "Dropper", value: a.dropperCount, color: COLORS.coral }, { label: "Stable", value: a.stableCount, color: COLORS.blue }, { label: "Churned", value: a.churnedCount, color: COLORS.slate }, { label: "New", value: a.newCount, color: COLORS.purple }];
   return (
     <>
       <MPSection title="Who drives this portfolio" />
@@ -190,10 +250,8 @@ function MPPortfolioBlocks({ monthIdx, onOpenMerchant }) {
         <MPChartCard title="Top merchants" info={"Top merchants by pickups in " + MP_MON3[Number(cur.month.slice(5)) - 1] + ". Click a name to open its profile."} insight={total ? { text: `Top 5 = ${share}% of ${mpCompact(total)} pickups`, tone: share >= 70 ? "bad" : "flat" } : null}>
           <MPRankBars data={rank.map((r) => ({ label: r.label, value: r.value, item: r.item }))} onItemClick={onOpenMerchant} fmtFn={(v) => mpCompact(v)} />
         </MPChartCard>
-        <MPChartCard title="Where merchants stand now" info="Current month, month-to-date. Hit/missed = existing merchants vs their own target; churned = no pickups yet this month; new = joined this month. Growth compares this month's daily average so far with the same days of last month: ±15% = Grower/Dropper.">
+        <MPChartCard title="Where merchants stand now" info="Current month, month-to-date. Growth compares each merchant's daily average so far with the same days of last month (GR %): +15% or more = Grower, -15% or less = Dropper, in between = Stable. Churned = no pickups yet this month; new = joined this month.">
           <MPRankBars data={mix} fmtFn={(v) => fmt(v)} />
-          <div style={{ fontSize: 10.5, color: COLORS.textFaint, margin: "10px 0 6px" }}>Growth vs the same days last month</div>
-          <MPRankBars data={growth} fmtFn={(v) => fmt(v)} />
         </MPChartCard>
       </MPGrid2>
     </>
@@ -228,7 +286,8 @@ function MPCurrentMonthOverview({ granularity, setGranularity }) {
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10, marginBottom: 6 }}>
         <MPPillRow tabs={["Daily", "Weekly", "Monthly"]} active={granularity} onChange={setGranularity} />
-        <div style={{ padding: "9px 18px", borderRadius: 999, background: `linear-gradient(135deg, ${COLORS.blue}, ${COLORS.purple})`, color: "#fff", fontFamily: MP_MONO, fontWeight: 700, fontSize: 13.5, boxShadow: "0 4px 14px rgba(76,110,245,0.3)" }}>
+        <div style={{ padding: "7px 14px", borderRadius: 999, background: COLORS.control, border: `1px solid ${COLORS.panelBorder}`, color: COLORS.text, fontWeight: 600, fontSize: 12.5, display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <CalendarDays size={14} strokeWidth={1.75} color={COLORS.icon} aria-hidden="true" />
           Current month: {monthRow.month}
         </div>
       </div>

@@ -44,3 +44,7 @@ Fashion head fresh-sales target 27,600 vs 23,000 for the five listed Fashion sal
 - Fake attempts and RTO without attempt in the parcel tables are proxies (591 vs 407 and 2,026 vs 5,064 for Trend Hub in September). Lost and compensation match the mart exactly; damaged is within a couple of parcels.
 - About half of the tickets can be linked to a merchant.
 - The mart's Oct 5 partial data is in the monthly Oct row; the daily packs end on Oct 4.
+
+## ASP (all views)
+
+ASP = (shipping revenue + VAS revenue) ÷ delivered parcels. No view shows a shipping-only or VAS-only ASP any more. Portfolio ASP = sum of revenue ÷ sum of delivered parcels, never an average of merchant ASPs.

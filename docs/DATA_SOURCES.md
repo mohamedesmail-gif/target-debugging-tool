@@ -29,3 +29,84 @@ Status: **MART** = read from the `mart` schema. **TARGETS** = `public.commercial
 
 ## Business rules that are constants in the code (not warehouse data)
 Merchant own target = September pickups x 1.60 / 26 (growth 60%); growth status thresholds; low DSR = at or below 65%; minimum 30 parcels for ASP and VAS lists; status bands (Achieved / On track / At risk within 10% / Behind); the ASP gap formula. Month constants for the current month (`MP_CUR_LABEL`, `MP_CUR_NAME`, `MP_MONTH_KEYS`, `MP_DAILY_START`, `MP_CUR_MONTH_START` in `src/head.jsx`) and `WD_BY_MONTH` in `src/tracker.jsx` are still fixed values and should be derived from the calendar.
+
+---
+
+# Pricing calculator and Pricing tab
+
+Added 2026-11-10. Engine `src/pricing_engine.js`, UI `src/m11_pricing.jsx`, pack `scripts/build_pricing.py`,
+tests `tests/pricing.mjs`. The engine is a faithful port of the Merchant Pricing Simulator (v66, data 2026-11-02):
+the formulas were not re-derived, so its validated results carry over. `npm run test:pricing` re-checks that on
+every build.
+
+## Where the pricing numbers come from
+
+| Data | Source | Status |
+|---|---|---|
+| Merchant-month records: orders, RTO, shipping revenue, allow to open, flexship, next day, extra COD, insurance, COD fee, discounts, compensation, customer colour counts (47 fields) | `public.deliveries`, last 3 full months, Sep 2026 onwards | NOT MART |
+| Order mix per merchant: order type x pickup zone x drop-off zone x size, with orders and shipping fee | `public.deliveries` | NOT MART |
+| Price plans: ~320 plans, price per type / lane / size, plus the allow to open, flexship, next day and extra COD rules | `mart.v_pricing_rate_card` (daily load) and, for the 3 origin dependent plans, `dim.pricing_transit_costs`. Loaded into the packs by `scripts/refresh_pricing.py`. The Google Sheet (Esraa, finance) is no longer the source. | table |
+| Per-merchant cost: first mile, last mile fixed, packaging materials per order | Sep 2026 profitability file | NO TABLE |
+| Network cost rates: middle mile per governorate, hub, last mile variable, communication, reverse, cash collection | Sep 2026 profitability file, some entered by hand | NO TABLE |
+| Expected GM2 % by monthly orders range (14 bands, 29.3% down to 13.7%) | Sep 2026 actual P&L | NO TABLE |
+| Cost overrides saved by the simulator's owner (communication 0.8, last mile variable 20.1, reverse 4.2, saved 2026-11-04) | the simulator page's own store | NO TABLE |
+
+Nothing here has a `mart` source today. That is the main thing to settle with the data engineer: the merchant-month
+records and the order mix are the two that most plausibly belong in `mart`, because they are derived from
+`public.deliveries` the same way the existing merchant views are. The rate card, the cost file and the GM2 bands are
+finance inputs, not warehouse facts, so they need tables of their own (the shape of `public.commercial_monthly_targets`
+is a good precedent: one row per key, loaded on a schedule, with a `loaded_at`).
+
+## What is fixed, and when it goes stale
+- Costs and the GM2 benchmark are frozen at **September 2026**. They do not move until someone reloads them.
+- The rate card was copied on **2026-11-03**, the merchant data refreshed on **2026-11-02**.
+- The pack has no refresh job yet. `jobs/refresh_payload.py` should build it once the sources above are agreed;
+  until then it is rebuilt by hand from a simulator export.
+
+## Who sees margin
+Account managers and sales reps see **volume, revenue and ASP only**. Cost and GM2 are for the VP, heads and team
+leaders (`prcCanSeeMargin()` in `src/m11_pricing.jsx`).
+
+**This is not yet enforced.** The pack is downloaded into the browser, so hiding cost in the UI does not stop an
+account manager from reading it. Two things make it real, and both are needed:
+1. `python3 scripts/build_pricing.py` (the default) builds the pack with every cost input removed. It keeps revenue
+   and ASP exact and cannot produce a GM2 at all (`tests/pricing.mjs` checks this).
+2. The API must choose which pack to serve from the signed-in person's role. Until login is on and there is an
+   endpoint in front of the data, one pack is served to everyone and the gate is cosmetic.
+
+Until then, either serve the `--no-cost` pack to everyone (nobody sees GM2 in the portal), or accept that the full
+pack is readable by anyone who can open the page. The second is only safe once access is restricted.
+
+## Known limits, carried over from the simulator
+- Drop-off zone fees stay as billed on any plan; in reality they depend on the plan, so moving a Cairo-outskirts
+  merchant is slightly off.
+- The next day COD minimum charge is not modelled, which understates next day revenue for low-COD merchants.
+- Insurance, the COD fee and packaging never change with the plan.
+- Customer colour uses today's success rate, not the rate at the time of the order.
+- A merchant billed on two plans in one month cannot be re-priced on one plan; the calculator still runs, but the
+  "current plan" column will not match what was billed.
+- Orders on a lane or size the rate card does not cover are dropped from the simulated revenue. The calculator says
+  so when it happens.
+
+## Refreshing the rate card from Redshift (2026-11-16)
+`python3 scripts/refresh_pricing.py --compare` prints how Redshift differs from the rate card in the pack (plans added or removed, plans whose
+send price changed). Without `--compare` it rewrites `pricing`, `card` and `pricing_asof` in `data/pricing_store.b64` and
+`data/pricing_store_full.b64`, then upload both next to `payload.json`. It needs the same four `REDSHIFT_*` variables as `jobs/refresh_payload.py`.
+Logic test: `python3 tests/test_refresh_pricing.py`. The connection itself has not been run from the build sandbox.
+Known differences found on 2026-11-16 against the sheet of 2026-11-03: 25 plans are new in Redshift, and `Warehousing-EGY-Traders` has a
+different send price (sheet 50,54,61,74,74,89,107; Redshift 55,59,63,76,76,91,109). Run `--compare` before relying on the new card.
+
+## Company daily pickups (VP Daily analysis)
+
+- `sql/pull_company_daily.sql` sums parcels picked per day for the whole company from `mart.v_merchant_daily_wide`: total, ecommerce, fulfillment, box, and the number of active businesses.
+- `jobs/refresh_payload.py` writes it to `data/company_daily.json` (one row per day, from the first day of last month to the as-of day). The file is not committed.
+- Only the VP Daily analysis uses it. It shows all company pickups (box included, any account manager or segment) with an "Other pickups" card and "Other" and "Box" rows. "Other" = company total minus the target-segment merchants. Heads, team leaders, sales and AMs are unchanged.
+- If the file is missing or does not cover every day of the merchant data, the VP view falls back to the target segments only.
+
+## Consignee scores (Customers tab)
+
+- `sql/pull_consignee_scores.sql` reads `public.delivery_attempts_asr` (one parcel = one tracking number, delivery attempts only) and joins the consignee phone to `public.consignees_fraud_score` on digits only (the score table stores `+20…`, the attempts table `20…`).
+- A parcel's month = the month of its first `confirmed_date`. Delivered = at least one attempt with `attemptstatus = 1`.
+- Consignee score from `delivery_success_rate` (0–100): 70 or more = High, 40 to below 70 = Medium, below 40 = Bad, 0 or no score = No data.
+- `jobs/refresh_payload.py` writes `data/consignee_scores.json` (`{months, bands, p: {businessId: [[monthIdx, bandIdx, parcels, delivered], …]}}`), same window as the merchant packs. Not committed.
+- Check (1 Sep–15 Oct 2026, whole company): Sep High 2,892,665 / Medium 533,640 / Bad 169,130 / No data 136,671 parcels; the per-merchant file adds up to exactly these totals.

@@ -52,7 +52,7 @@ In this file the scoping shapes the screens only (the whole data set is embedded
 - 6a Overall overview: from/to dates + Daily/Weekly/Monthly; "Who drives this portfolio" (top merchants, status mix); charts Volume, Revenue, Active merchants, ASP (shipping and VAS), Compensation, DSR, ASR, Lost & damaged; period table coloured against the previous period (+/-2% = stable; month-to-date row never coloured).
 - 6b Comparison: Day / Week / Month with presets and custom pickers; metric selector, delta card, current value first then earlier same-length periods, chart, all-metrics table.
 - 6c Current month overview: Daily / Weekly / Monthly (same days of both months).
-- 6d Issues: Operational (cards, trends, which merchants, current-month parcel tables: lost and compensation match the cards, fake attempts and RTO are proxies); CX (tickets by day, status, category, agent; opened, pending and compensation lists); Merchants & customers (failed attempts by day and reason, grouped by side from the reason text; latest 10 per merchant).
+- 6d Issues: Operational (cards, trends, which merchants, current-month parcel tables: lost and compensation match the cards, fake attempts and RTO are proxies); CX (tickets by day, status, category, agent; opened, pending and compensation lists); Customers (consignee scores) (failed attempts by day and reason, grouped by side from the reason text; latest 10 per merchant).
 - 6e Opportunities: VAS revenue by type (selected month and the two before), delivered parcels by zone.
 - 6f Analysis, Debugger: placeholder tabs, content to be defined.
 

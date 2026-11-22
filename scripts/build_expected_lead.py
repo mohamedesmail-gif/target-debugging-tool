@@ -9,7 +9,9 @@ DATA = pathlib.Path(__file__).resolve().parents[1] / 'data'
 D = json.load(open(DATA / 'new_data_oct.json')); O = json.load(open(DATA / 'org_final.json', encoding='utf-8'))
 A = json.load(open(DATA / 'merchant_asp.json')); DSR = json.load(open(DATA / 'merchant_dsr.json'))
 PTD = json.load(open(DATA / 'ptd_sep1_4.json')); TD = json.load(open(DATA / 'td_oct1_4.json'))
+import datetime
 FULL, ELAPSED, FACTOR = D['wdFull'], D['wdElapsed'], 1.0      # achievement is measured against the monthly target of the sheet
+WDPTD = sum(1 for i in range(D['ptdDays']) if datetime.date(2026, 9, 1 + i).weekday() != 4)   # working days (no Fridays) of Sep 1..N
 heads = {h['id']: h for h in O['heads']}; tls = {t['id']: t for t in O['tls']}
 
 rows = {}                               # business id -> row, plus the AM it belongs to
@@ -25,7 +27,8 @@ for a in O['ams']:
         rows[m['id']] = dict(id=m['id'], name=m['name'], am=a['name'], team=a['team'], tl=a['tlId'], head=a['headId'], mtd=m['mtd'], avg=mavg, cat=cat, has=has, tgt=tgt,
                              dev=(mavg - tgt) if has else None, missed=(mavg < tgt) if has else False, ach=(mavg / tgt) if has and tgt else None,
                              dl=dl, rev=rev, vas=vas, asp=rev / dl if dl > 0 else None, vasasp=vas / dl if dl > 0 else None, gain=TD[m['id']] - PTD[m['id']], td=TD[m['id']], ptd=PTD[m['id']],
-                             dsr=DSR[m['id']][0], sep=DSR[m['id']][1])
+                             dsr=DSR[m['id']][0], sep=DSR[m['id']][1], pavg=PTD[m['id']] / WDPTD, new=bool(m['newThisMonth']),
+                             pasp=(A[m['id']][3] / A[m['id']][5]) if A[m['id']][5] > 0 else None)
 
 def top(lst, key, desc=True, n=10):
     return sorted(lst, key=lambda r: ((-key(r)) if desc else key(r), r['id']))[:n]
@@ -43,6 +46,14 @@ def agg(ams, sales, label, target_asp, target_pick):
     targeted = [r for r in rs if r['has']]; low = [r for r in rs if r['dsr'] is not None and r['dsr'] <= 65 and r['sep'] > 0]
     withd = [r for r in rs if r['dsr'] is not None and r['sep'] > 0]; minp = 30; big = [r for r in rs if r['dl'] >= minp]
     names_ = lambda l: [r['name'] for r in l]
+    for r in rs: r['mdelta'] = r['avg'] - r['pavg']
+    pk = [r for r in rs if r['avg'] > 0 or r['pavg'] > 0]
+    ar = [r for r in big if r['pasp'] is not None and r['pasp'] > 0]
+    for r in ar: r['adelta'] = r['asp'] - r['pasp']
+    if ams and not sales:        # a single AM: new merchants of the portfolio
+        nr = [r for r in rs if r['new']]; nm = len(nr); ndl = sum(r['dl'] for r in nr); nasp = (sum(r['rev'] for r in nr) / ndl) if ndl else None
+    else:
+        nm = sum(s['a']['newMerchants'] for s in sales); ndl = sum(s['a']['newDelivered'] for s in sales); nasp = (sum(s['a']['newRevenue'] for s in sales) / ndl) if ndl else None
     retained = [r for r in rs if r['sep'] > 0 and r['td'] > 0]; churnedm = [r for r in rs if r['sep'] > 0 and r['td'] == 0]
     coh = [dict(id=x[0], name=x[1], oct=x[3], sep=x[6]) for s in sales for x in s['cohortList']]
     frs = [dict(id=x[0], name=x[1], picked=x[3]) for s in sales for x in s['newList']]
@@ -61,6 +72,11 @@ def agg(ams, sales, label, target_asp, target_pick):
                cohRet=names_(top([c for c in coh if c['oct'] > 0], lambda c: c['oct'])), cohChurn=names_(top([c for c in coh if c['oct'] == 0], lambda c: c['sep'])),
                nCohRet=sum(1 for c in coh if c['oct'] > 0), nCohChurn=sum(1 for c in coh if c['oct'] == 0),
                freshTop=names_(top(frs, lambda r: r['picked'])), freshBot=names_(top(frs, lambda r: r['picked'], False)),
+               pkUp=names_(top([r for r in pk if r['mdelta'] > 0], lambda r: r['mdelta'])), pkDown=names_(top([r for r in pk if r['mdelta'] < 0], lambda r: r['mdelta'], False)),
+               nPkUp=sum(1 for r in pk if r['mdelta'] > 0), nPkDown=sum(1 for r in pk if r['mdelta'] < 0),
+               aspUp=names_(top([r for r in ar if r['adelta'] > 0], lambda r: r['adelta'])), aspDown=names_(top([r for r in ar if r['adelta'] < 0], lambda r: r['adelta'], False)),
+               nAspUp=sum(1 for r in ar if r['adelta'] > 0), nAspDown=sum(1 for r in ar if r['adelta'] < 0),
+               newMerchants=nm, newBaseAsp=nasp, newDl=ndl,
                scopeAsp=sum(r['rev'] for r in elig) / DL)
     return out
 

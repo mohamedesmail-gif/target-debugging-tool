@@ -42,7 +42,7 @@ function mpReasonSide(r) {
   if (t.startsWith("waiting for data modification")) return "Address / phone data";
   return "Other";
 }
-const MP_SIDE_COLOR = { Customer: "#C98512", Merchant: "#7C5CDB", "Address / phone data": "#4C6EF5", Other: "#8B94A0" };
+const MP_SIDE_COLOR = { Customer: COLORS.chart, Merchant: COLORS.chart2, "Address / phone data": COLORS.sand, Other: COLORS.deco };   // chart theme: teal, light teal, sand, grey
 function mpCmAttempts(id) {
   if (!MP_CM_P.a[id]) {
     const e = MP_CM && MP_CM.a[id];
@@ -80,14 +80,14 @@ function MPDetailTable({ title, info, note, rows, columns, filterKeys, csvName }
     <div style={{ marginBottom: 22 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
         <div style={{ fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center" }}>{title} <span style={{ color: COLORS.textFaint, fontWeight: 400, marginLeft: 6 }}>({fmt(filtered.length)}{filtered.length !== rows.length ? " of " + fmt(rows.length) : ""})</span>{info && <InfoTip text={info} />}</div>
-        <button onClick={() => downloadCsvMP(csvName, columns.map((c) => ({ key: c.key, label: c.label })), filtered)} style={{ fontSize: 11.5, padding: "6px 12px", borderRadius: 7, border: `1px solid ${COLORS.panelBorder2}`, background: COLORS.panel, color: COLORS.blue, cursor: "pointer" }}>Download report</button>
+        <button onClick={() => downloadCsvMP(csvName, columns.map((c) => ({ key: c.key, label: c.label })), filtered)} style={UI.btnSmall}><Download size={14} strokeWidth={1.75} aria-hidden="true" />Download report</button>
       </div>
       {note && <div style={{ fontSize: 11.5, color: COLORS.textFaint, marginBottom: 8 }}>{note}</div>}
       <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
         {filterKeys.map((k) => <MPFilterInput key={k} placeholder={labels[k] || k} value={f[k]} onChange={(v) => { setF((x) => ({ ...x, [k]: v })); setShown(50); }} />)}
       </div>
       <MPTable columns={columns} rows={filtered.slice(0, shown)} />
-      {filtered.length > shown && <button onClick={() => setShown((s) => s + 50)} style={{ marginTop: 8, fontSize: 12, padding: "6px 12px", borderRadius: 7, border: `1px solid ${COLORS.panelBorder2}`, background: COLORS.panel, color: COLORS.textMuted, cursor: "pointer" }}>Show {Math.min(50, filtered.length - shown)} more ({fmt(filtered.length - shown)} left)</button>}
+      {filtered.length > shown && <button onClick={() => setShown((s) => s + 50)} style={{ ...UI.btnSmall, marginTop: 8 }}>Show {Math.min(50, filtered.length - shown)} more ({fmt(filtered.length - shown)} left)</button>}
     </div>
   );
 }

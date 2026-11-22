@@ -185,11 +185,11 @@ function simExisting(store, ids, month, o, compMode) {
 }
 
 // ---- small UI pieces ----
-const SIM_IN = { padding: "7px 9px", fontSize: 13, borderRadius: 8, border: `1px solid ${COLORS.panelBorder2}`, background: COLORS.panel, color: COLORS.text, width: "100%", boxSizing: "border-box" };
+const SIM_IN = { ...UI.input, fontSize: 13, width: "100%", boxSizing: "border-box" };
 function SimCard({ title, note, children }) {
   return (
-    <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.panelBorder}`, borderRadius: 12, padding: "12px 14px" }}>
-      {title && <div style={{ fontSize: 12, fontWeight: 700, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: note ? 2 : 8 }}>{title}</div>}
+    <div style={{ ...UI.card, padding: "16px 18px" }}>
+      {title && <h3 style={{ fontSize: 14, fontWeight: 600, color: COLORS.text, margin: `0 0 ${note ? 2 : 10}px` }}>{title}</h3>}
       {note && <div style={{ fontSize: 11.5, color: COLORS.textFaint, marginBottom: 8 }}>{note}</div>}
       {children}
     </div>
@@ -198,7 +198,7 @@ function SimCard({ title, note, children }) {
 function SimField({ label, children, hint }) {
   return (
     <label style={{ display: "block", marginBottom: 10 }}>
-      <span style={{ display: "block", fontSize: 12, color: COLORS.textMuted, marginBottom: 4 }}>{label}</span>
+      <span style={{ ...UI.label, display: "block", marginBottom: 5 }}>{label}</span>
       {children}
       {hint && <span style={{ display: "block", fontSize: 11.5, color: COLORS.textFaint, marginTop: 3 }}>{hint}</span>}
     </label>
@@ -206,10 +206,10 @@ function SimField({ label, children, hint }) {
 }
 function SimSeg({ value, options, onChange, label }) {
   return (
-    <div role="group" aria-label={label} style={{ display: "inline-flex", border: `1px solid ${COLORS.panelBorder2}`, borderRadius: 8, overflow: "hidden" }}>
+    <div role="group" aria-label={label} style={{ display: "inline-flex", flexWrap: "wrap", gap: 4, padding: 3, background: COLORS.control, border: `1px solid ${COLORS.panelBorder}`, borderRadius: THEME.radius.pill, maxWidth: "100%" }}>
       {options.map(([v, l]) => (
         <button key={v} onClick={() => onChange(v)} aria-pressed={value === v}
-          style={{ padding: "7px 12px", fontSize: 12.5, fontWeight: 600, border: "none", cursor: "pointer", background: value === v ? COLORS.blue : COLORS.panel, color: value === v ? "#fff" : COLORS.text }}>{l}</button>
+          style={{ ...UI.pill(value === v), border: "1px solid transparent", background: value === v ? COLORS.navy : "transparent", padding: "6px 14px" }}>{l}</button>
       ))}
     </div>
   );
@@ -219,7 +219,7 @@ const simSign = (d, digits) => (d >= 0 ? "+" : "−") + fmt(Math.abs(d), digits 
 // Summary table: one column per scenario. Margin rows only for viewers who may see margin.
 function SimSummary({ cols, canMargin, bench }) {
   const th = { textAlign: "right", padding: "6px 12px", fontWeight: 600, fontSize: 11.5, color: COLORS.textMuted };
-  const td = { padding: "7px 12px", textAlign: "right", fontFamily: MP_MONO, fontSize: 13 };
+  const td = { padding: "8px 12px", textAlign: "right", fontSize: 13 };
   const rows = [["Orders", (r) => fmt(r.orders, 0)], ["Revenue (EGP)", (r) => fmt(r.revenue, 0)], ["ASP (EGP per order)", (r) => (r.asp == null ? "—" : fmt(r.asp, 2))]];
   if (canMargin && cols.every((c) => c.r.cost)) rows.push(["Direct cost (EGP)", (r) => fmt(r.cost.total, 0)], ["GM2 (EGP)", (r) => fmt(r.gm2, 0)], ["GM2 %", (r) => (r.gm2pct == null ? "—" : pct(r.gm2pct, 1))]);
   return (
@@ -273,7 +273,7 @@ function SimRateCard({ store, plans, pz }) {
           <tbody>
             {list.map((x) => [["S", "Send"], ["R", "Return (RTO)"]].map(([t, tl], i) => (
               <tr key={x.plan + x.label + t} style={{ borderTop: i === 0 ? `2px solid ${COLORS.panelBorder2}` : `1px solid ${COLORS.panelBorder}` }}>
-                <td style={{ padding: "6px 8px", fontSize: 12.5, fontWeight: 600 }}>{i === 0 ? <span>{x.label}<div style={{ fontWeight: 500, color: COLORS.textMuted }}>{x.plan}</div></span> : ""}</td>
+                <td style={{ padding: "6px 8px", fontSize: 12.5, fontWeight: 600 }}>{i === 0 ? <span>{x.label}<div style={{ color: COLORS.textMuted }}>{x.plan}</div></span> : ""}</td>
                 <td style={{ padding: "6px 8px", fontSize: 12.5, color: COLORS.textMuted }}>{tl}</td>
                 {[1, 2, 3, 4, 5, 6, 7].map((z) => <td key={z} style={td}>{f(x.plan, t, z)}</td>)}
               </tr>
@@ -451,7 +451,7 @@ function SimExistingTab({ store, viewer, canMargin, initialId }) {
         </SimField>
         <SimField label="Simulation type">
           <div style={{ position: "relative" }}>
-            <button data-testid="sim-types" onClick={() => setTypesOpen(!typesOpen)} style={{ ...SIM_IN, width: "auto", minWidth: 200, textAlign: "left", cursor: "pointer" }}>{typeLabel} {"▾"}</button>
+            <button data-testid="sim-types" onClick={() => setTypesOpen(!typesOpen)} style={{ ...SIM_IN, display: "flex", alignItems: "center", width: "auto", minWidth: 200, textAlign: "left", cursor: "pointer" }}>{typeLabel}<ChevronDown size={14} strokeWidth={1.75} aria-hidden="true" style={{ marginLeft: "auto" }} /></button>
             {typesOpen && (
               <div style={{ position: "absolute", zIndex: 5, top: "100%", left: 0, marginTop: 2, background: COLORS.panel, border: `1px solid ${COLORS.panelBorder2}`, borderRadius: 8, padding: "6px 12px", boxShadow: "0 6px 18px rgba(0,0,0,0.12)", minWidth: 220 }}>
                 {[["plan", "Price plan change"], ["rto", "RTO colour discount"], ["promo", "Promo engine discount"]].map(([k, l]) => (
@@ -632,19 +632,19 @@ function PricingSimulatorScreen({ nav, viewerKey, initialId, fromScreen, onBack 
   }, [canMargin]);
   const tabs = [["existing", "Existing merchants simulation"], ["new", "New merchant"]].concat(canCost ? [["cost", "Cost assumptions"]] : []);
   return (
-    <div style={{ minHeight: "100vh", background: COLORS.bg, color: COLORS.text, fontFamily: "'Lato', Arial, sans-serif", padding: "20px 16px" }}>
-      <div style={{ maxWidth: 1240, margin: "0 auto" }}>
+    <div className="tt-shell" style={{ minHeight: "100vh", background: COLORS.bg, color: COLORS.text, fontFamily: THEME.font }}>
+      <div className="tt-wrap" style={{ maxWidth: 1240 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 14, flexWrap: "wrap" }}>
-          <button data-testid="sim-back" onClick={onBack} style={{ padding: "6px 14px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, cursor: "pointer", border: `1px solid ${COLORS.panelBorder2}`, background: COLORS.panel, color: COLORS.text }}>{"←"} Back</button>
-          <h1 style={{ fontSize: 20, margin: 0 }}>Pricing simulator</h1>
-          <span style={{ fontSize: 12, color: COLORS.textFaint }}>{store ? "Data as of " + store.asof + ", rate card " + store.pricing_asof + ". EGP before VAT." : ""}</span>
+          <button data-testid="sim-back" onClick={onBack} style={UI.btn}><ArrowLeft size={15} strokeWidth={1.75} aria-hidden="true" />Back</button>
+          <h1 style={{ ...UI.title, margin: 0 }}>Pricing simulator</h1>
+          <span style={{ fontSize: 12, color: COLORS.textMuted }}>{store ? "Data as of " + store.asof + ", rate card " + store.pricing_asof + ". EGP before VAT." : ""}</span>
         </div>
         {!prcCanUse(viewerKey) ? <MPBanner text="The pricing simulator is for team leaders, heads and the VP." /> : (
           <>
             <div role="tablist" style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
               {tabs.map(([k, l]) => (
                 <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
-                  style={{ padding: "8px 16px", fontSize: 13, fontWeight: 700, borderRadius: 8, cursor: "pointer", border: `1px solid ${tab === k ? COLORS.blue : COLORS.panelBorder2}`, background: tab === k ? COLORS.blue : COLORS.panel, color: tab === k ? "#fff" : COLORS.text }}>{l}</button>
+                  style={UI.pill(tab === k)}>{l}</button>
               ))}
             </div>
             {error && <MPBanner text={error} />}

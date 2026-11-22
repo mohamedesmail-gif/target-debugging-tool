@@ -41,8 +41,9 @@ function MPOperationalIssues({ monthIdx, onOpenMerchant }) {
     ["Damaged", "parcels_damaged", "Parcels flagged damaged (mart: parcels_damaged)."],
     ["Compensation (EGP)", "compensation_amount", "Compensation paid to the merchant (mart: compensation_amount)."],
   ];
-  const series = (key) => MP_MONTHLY.map((m, i) => ({ x: labels[i], v: m[key] || 0 }));
-  const ins = (key) => mpInsight({ values: MP_MONTHLY.map((m) => m[key] || 0), labels, kind: "month", partialLast: true, good: "down" });
+  const [gran, setGran] = useState("Monthly");
+  const td = mpSeriesForRange(gran, { from: MP_RANGE_MIN, to: MP_RANGE_MAX });
+  const tm = td.rows.map(mpRowMetrics), tl = td.labels;
   return (
     <div>
       <MPGrid2 min={170}>
@@ -52,25 +53,24 @@ function MPOperationalIssues({ monthIdx, onOpenMerchant }) {
         ))}
       </MPGrid2>
       <MPSection title="Trend" />
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+        <MPPillRow tabs={["Daily", "Weekly", "Monthly"]} active={gran} onChange={setGran} />
+        <span style={{ fontSize: 11, color: COLORS.textFaint }}>{gran === "Monthly" ? "October is month-to-date." : gran === "Daily" ? "Daily view starts on Sep 1 and skips Fridays." : "Weekly view starts on Sep 1; the last week may be partial."} Each trend can also be read per 1,000 pickups.</span>
+      </div>
       <MPGrid2>
-        <MPChartCard title="Fake attempts" info="Fake delivery attempts per month. October is month-to-date." insight={ins("fake_attempts")}>
-          <MPLineChart data={series("fake_attempts")} xKey="x" series={[{ key: "v", label: "Fake attempts", color: COLORS.coral }]} partialLast fmtFn={(v) => fmt(v)} />
-        </MPChartCard>
-        <MPChartCard title="RTO without attempt" info="Returned to merchant with no delivery attempt, per month. October is month-to-date." insight={ins("rto_without_attempt")}>
-          <MPLineChart data={series("rto_without_attempt")} xKey="x" series={[{ key: "v", label: "RTO without attempt", color: COLORS.amber }]} partialLast fmtFn={(v) => fmt(v)} />
-        </MPChartCard>
+        <MPIncidentCard title="Fake attempts" field="fake" countLabel="Attempts" color={COLORS.chart} m={tm} labels={tl} kind={td.kind} partialLast={td.partialLast} info="Delivery attempts flagged as fake (mart: fake_attempts). Lower is better." />
+        <MPIncidentCard title="RTO without attempt" field="rto" countLabel="Parcels" color={COLORS.chart} m={tm} labels={tl} kind={td.kind} partialLast={td.partialLast} info="Parcels returned to the merchant with no delivery attempt (mart: rto_without_attempt). Lower is better." />
+        <MPIncidentCard title="Lost parcels" field="lost" color={COLORS.chart} m={tm} labels={tl} kind={td.kind} partialLast={td.partialLast} info="Parcels flagged lost (mart: parcels_lost). Lower is better." />
+        <MPIncidentCard title="Damaged parcels" field="dam" color={COLORS.chart} m={tm} labels={tl} kind={td.kind} partialLast={td.partialLast} info="Parcels flagged damaged (mart: parcels_damaged). Lower is better." />
+        <MPIncidentCard title="Compensation (EGP)" field="comp" countLabel="EGP" color={COLORS.chart} m={tm} labels={tl} kind={td.kind} partialLast={td.partialLast} info="Compensation paid to merchants in EGP (mart: compensation_amount). Lower is better." />
       </MPGrid2>
-      <MPChartCard title="Lost & damaged" info="Parcels flagged lost or damaged per month. October is month-to-date." insight={mpInsight({ values: MP_MONTHLY.map((m) => (m.parcels_lost || 0) + (m.parcels_damaged || 0)), labels, kind: "month", partialLast: true, good: "down" })}>
-        <MPBarChart data={MP_MONTHLY.map((m, i) => ({ x: labels[i], Lost: m.parcels_lost || 0, Damaged: m.parcels_damaged || 0 }))} xKey="x" partialLast
-          series={[{ key: "Lost", label: "Lost", color: COLORS.purple }, { key: "Damaged", label: "Damaged", color: COLORS.coral }]} />
-      </MPChartCard>
       {MP_MODE === "portfolio" && (
         <>
           <MPSection title={"Which merchants — " + mpMonthLabel(monthIdx)} />
           <MPGrid2>
             {[["Fake attempts", "fake_attempts"], ["RTO without attempt", "rto_without_attempt"], ["Lost", "parcels_lost"], ["Damaged", "parcels_damaged"], ["Compensation (EGP)", "compensation_amount"]].map(([t, k]) => (
               <MPChartCard key={k} title={t} info={"Merchants with the most " + t.toLowerCase() + " in the selected month. Click a name to open its profile."}>
-                <MPRankBars data={mpPfRank(monthIdx, k, 6).map((r) => ({ label: r.label, value: r.value, item: r.item }))} onItemClick={onOpenMerchant} color={COLORS.coral} fmtFn={(v) => fmt(v)} emptyText="None this month" />
+                <MPRankBars data={mpPfRank(monthIdx, k, 6).map((r) => ({ label: r.label, value: r.value, item: r.item }))} onItemClick={onOpenMerchant} color={COLORS.chart} fmtFn={(v) => fmt(v)} emptyText="None this month" />
               </MPChartCard>
             ))}
           </MPGrid2>
@@ -106,12 +106,12 @@ function MPCxIssues({ onOpenMerchant }) {
       <MPSection title="When, who and what" />
       <MPGrid2>
         <MPChartCard title="Tickets per day" info="Tickets created each day this month." insight={all.length ? { text: `${fmt(all.length)} tickets in ${MP_CM.days} days`, tone: "flat" } : null}>
-          <MPBarChart data={perDay} xKey="x" series={[{ key: "Tickets", label: "Tickets", color: COLORS.blue }]} />
+          <MPBarChart data={perDay} xKey="x" series={[{ key: "Tickets", label: "Tickets", color: COLORS.chart }]} />
         </MPChartCard>
-        <MPChartCard title="By status" info="Tickets by current status."><MPRankBars data={count(all, "status")} color={COLORS.teal} fmtFn={(v) => fmt(v)} /></MPChartCard>
-        <MPChartCard title="By category" info="Tickets by category."><MPRankBars data={count(all, "category")} color={COLORS.amber} fmtFn={(v) => fmt(v)} /></MPChartCard>
-        <MPChartCard title="By agent" info="Tickets per assigned agent."><MPRankBars data={count(all, "agent")} color={COLORS.purple} fmtFn={(v) => fmt(v)} /></MPChartCard>
-        {port && <MPChartCard title="By merchant" info="Merchants with the most tickets. Click a name to open its profile."><MPRankBars data={byMerchant} onItemClick={onOpenMerchant} color={COLORS.blue} fmtFn={(v) => fmt(v)} /></MPChartCard>}
+        <MPChartCard title="By status" info="Tickets by current status."><MPRankBars data={count(all, "status")} color={COLORS.chart} fmtFn={(v) => fmt(v)} /></MPChartCard>
+        <MPChartCard title="By category" info="Tickets by category."><MPRankBars data={count(all, "category")} color={COLORS.chart} fmtFn={(v) => fmt(v)} /></MPChartCard>
+        <MPChartCard title="By agent" info="Tickets per assigned agent."><MPRankBars data={count(all, "agent")} color={COLORS.chart} fmtFn={(v) => fmt(v)} /></MPChartCard>
+        {port && <MPChartCard title="By merchant" info="Merchants with the most tickets. Click a name to open its profile."><MPRankBars data={byMerchant} onItemClick={onOpenMerchant} color={COLORS.chart} fmtFn={(v) => fmt(v)} /></MPChartCard>}
       </MPGrid2>
       <MPSection title="Ticket detail" />
       <MPDetailTable title="Opened tickets" rows={open} columns={base} filterKeys={fk} csvName="opened_tickets_oct.csv" info="Tickets with status Open." />
@@ -147,7 +147,7 @@ function MPMerchantCustomerIssues({ onOpenMerchant }) {
         <MPChartCard title="By reason" info={"Most common failure reasons, coloured by side. " + sideInfo}>
           <MPRankBars data={reasons} maxRows={8} fmtFn={(v) => fmt(v)} />
         </MPChartCard>
-        {port && <MPChartCard title="By merchant" info="Merchants with the most failed attempts. Click a name to open its profile."><MPRankBars data={s.byMerchant} onItemClick={onOpenMerchant} color={COLORS.coral} fmtFn={(v) => fmt(v)} /></MPChartCard>}
+        {port && <MPChartCard title="By merchant" info="Merchants with the most failed attempts. Click a name to open its profile."><MPRankBars data={s.byMerchant} onItemClick={onOpenMerchant} color={COLORS.chart} fmtFn={(v) => fmt(v)} /></MPChartCard>}
       </MPGrid2>
       <MPSection title="Latest failed attempts" />
       <MPDetailTable title="Latest failed attempts" rows={s.recent} columns={cols} filterKeys={port ? ["tracking", "merchant", "reason"] : ["tracking", "reason"]} csvName="latest_failed_attempts_oct.csv" info="The latest 10 failed attempts of each merchant." />
@@ -159,10 +159,10 @@ function MPOpportunities({ monthIdx }) {
   const cur = MP_MONTHLY[monthIdx];
   const flags = MP_MODE === "merchant" ? computeFlagsMP(monthIdx) : null;
   const win = mpVasWindow(monthIdx);
-  const vasData = MP_VAS_TYPES.map((v) => ({ label: v.label, value: win.reduce((s, m) => s + (m[v.key] || 0), 0), color: COLORS.purple }));
+  const vasData = MP_VAS_TYPES.map((v) => ({ label: v.label, value: win.reduce((s, m) => s + (m[v.key] || 0), 0), color: COLORS.chart }));
   const zoneKeys = Object.keys(MP_ZONE_LABELS);
   const zoneTotal = zoneKeys.reduce((s, k) => s + (cur[k] || 0), 0);
-  const zoneRows = zoneKeys.map((k) => ({ label: MP_ZONE_LABELS[k], value: cur[k] || 0, color: COLORS.blue })).sort((a, b) => b.value - a.value);
+  const zoneRows = zoneKeys.map((k) => ({ label: MP_ZONE_LABELS[k], value: cur[k] || 0, color: COLORS.chart })).sort((a, b) => b.value - a.value);
   const vasMerchantShare = cur.active_merchants ? Math.round((cur.vas_merchants / cur.active_merchants) * 100) : 0;
   const lead = zoneRows[0];
   return (

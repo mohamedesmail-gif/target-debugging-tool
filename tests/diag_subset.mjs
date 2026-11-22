@@ -22,12 +22,12 @@ click(btn('AMs')); await sleep(100);
 for (const am of ['Farha Aly Saad', 'maha Kotb', 'Nourhan Hossam Farid', 'Yousra Gamal Youssef Elawady']) {
   setSel(Array.from(document.querySelectorAll('select')).find((x) => x.getAttribute('aria-label') !== 'Top and bottom list'), am); await sleep(60); scan('tracker ' + am);
   click(btn('ASP')); await sleep(80); scan('tracker ASP ' + am); click(btn('Pickups')); await sleep(40);
-  click(btn('Portfolio overview →')); await waitFor(() => document.body.textContent.includes('Filter merchants') || document.body.textContent.includes('No merchants are assigned'));
+  click(btn('Portfolio overview')); await waitFor(() => document.body.textContent.includes('Filter merchants') || document.body.textContent.includes('No merchants are assigned'));
   if (document.body.textContent.includes('Filter merchants') && document.body.textContent.includes('Overall overview')) {
     scan('portfolio ' + am);
     for (const q of ['a', 'sh', 'store']) { setInput(Array.from(document.querySelectorAll('input')).find((i) => i.placeholder === 'Business name'), q); await sleep(700); await waitFor(() => !document.body.textContent.includes('Loading'), 8000); scan('filter "' + q + '" ' + am); }
   }
-  click(btn('← Back to portfolio overview') || btn('← Back to Target Tracker')); await sleep(300); if (btn('← Back to Target Tracker')) click(btn('← Back to Target Tracker')); await sleep(100);
+  click(btn('Back to portfolio overview') || btn('Back to Target Tracker')); await sleep(300); if (btn('Back to Target Tracker')) click(btn('Back to Target Tracker')); await sleep(100);
 }
 console.log('glitches:', bad.length ? bad : 'none');
 process.exit(0);

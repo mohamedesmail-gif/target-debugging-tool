@@ -28,7 +28,7 @@ function sha256Hex(str) {
   }
   return h.map((x) => (x >>> 0).toString(16).padStart(8, "0")).join("");
 }
-const AUTH_FONT = "'Lato', 'Helvetica Neue', Arial, sans-serif";
+const AUTH_FONT = THEME.font;
 const AUTH_MESSAGES = {
   signedOut: "You\u2019re signed out.",
   domain: "Please sign in with your Bosta Google account (@" + AUTH_DOMAIN + ").",
@@ -78,30 +78,29 @@ function LoginScreen({ message, onAccount }) {
   const isError = message && message !== AUTH_MESSAGES.signedOut;
   const submit = () => { setPicker(false); const e = email; setEmail(""); onAccount(authResolve(e)); };
   return (
-    <div style={{ background: "#FAFAFA", minHeight: "100vh", fontFamily: AUTH_FONT, color: "#2B3F3A", display: "flex", justifyContent: "center", boxSizing: "border-box", padding: "0 20px" }}>
-      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700;900&display=swap" />
-      <div style={{ width: "100%", maxWidth: 380, paddingTop: "13vh", textAlign: "center" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 18, marginBottom: 62 }}>
-          <span style={{ color: "#E8321F", fontSize: 50, fontWeight: 900, letterSpacing: "-0.03em", lineHeight: 1 }}>bosta</span>
-          <span style={{ width: 1, height: 34, background: "#D8DCDB" }} />
-          <span style={{ fontSize: 26, fontWeight: 700, color: "#2B3F3A", letterSpacing: "-0.01em" }}>Commercial Portal</span>
+    <div style={{ background: COLORS.bg, minHeight: "100vh", fontFamily: THEME.font, color: COLORS.text, display: "flex", justifyContent: "center", boxSizing: "border-box", padding: "0 20px" }}>
+            <main style={{ ...UI.card, width: "100%", maxWidth: 400, alignSelf: "flex-start", marginTop: "12vh", padding: "32px 28px", textAlign: "center" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, marginBottom: 32 }}>
+          <span style={{ color: COLORS.brand, fontSize: 34, fontWeight: 700, letterSpacing: "-0.03em", lineHeight: 1 }}>bosta</span>
+          <span style={{ width: 1, height: 24, background: COLORS.panelBorder2 }} />
+          <span style={{ fontSize: 17, fontWeight: 600, color: COLORS.text }}>Commercial Portal</span>
         </div>
-        <div style={{ fontSize: 36, fontWeight: 700, letterSpacing: "-0.02em", marginBottom: 14 }}>Welcome back</div>
-        <div style={{ fontSize: 15.5, color: "#7A8885", marginBottom: 40 }}>Sign in with your Bosta Google account.</div>
-        <button onClick={() => setPicker(true)} style={{ width: "100%", height: 46, display: "flex", alignItems: "center", justifyContent: "center", gap: 12, background: "#FFFFFF", border: "1px solid #D9DEDD", borderRadius: 6, cursor: "pointer", fontSize: 16.5, color: "#3C4043", fontFamily: "'Roboto', 'Helvetica Neue', Arial, sans-serif" }}>
+        <h1 style={{ ...UI.title, fontSize: 24, margin: "0 0 8px" }}>Welcome back</h1>
+        <div style={{ fontSize: 13, color: COLORS.textMuted, marginBottom: 24 }}>Sign in with your Bosta Google account.</div>
+        <button onClick={() => setPicker(true)} style={{ ...UI.btn, width: "100%", height: 46, justifyContent: "center", gap: 12, fontSize: 14, background: COLORS.panel }}>
           <GoogleG /> Continue with Google
         </button>
         {message && (
-          <div role="status" style={{ marginTop: 52, padding: "16px 18px", borderRadius: 10, fontSize: 14.5, background: isError ? "#FBF1EF" : "#F0F4F1", color: isError ? "#A24A3C" : "#5A7168" }}>{message}</div>
+          <div role="status" style={{ marginTop: 20, padding: "12px 14px", borderRadius: THEME.radius.tile, fontSize: 13, background: isError ? THEME.color.negBg : COLORS.control, color: isError ? THEME.color.neg : COLORS.textMuted }}>{message}</div>
         )}
-      </div>
+      </main>
       {picker && (
-        <div onClick={() => setPicker(false)} style={{ position: "fixed", inset: 0, background: "rgba(20,30,28,0.35)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 50 }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 12, width: "100%", maxWidth: 400, padding: "20px 22px", boxShadow: "0 12px 40px rgba(0,0,0,0.25)", textAlign: "left" }}>
-            <div style={{ fontWeight: 700, fontSize: 17, marginBottom: 4 }}>Sign in with Google</div>
-            <div style={{ fontSize: 12, color: "#7A8885", marginBottom: 14, lineHeight: 1.5 }}>Prototype: type your Bosta email. In production Google verifies it and the portal looks it up in the access list.</div>
-            <input autoFocus type="email" value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") submit(); }} placeholder={"name@" + AUTH_DOMAIN} aria-label="Bosta email" style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 8, border: "1px solid #D9DEDD", fontSize: 14.5, marginBottom: 14 }} />
-            <button onClick={submit} style={{ width: "100%", padding: "10px 0", borderRadius: 8, border: "none", background: "#E8321F", color: "#fff", fontSize: 14.5, fontWeight: 700, cursor: "pointer" }}>Continue</button>
+        <div onClick={() => setPicker(false)} style={{ position: "fixed", inset: 0, background: "rgba(28,29,33,0.4)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 50 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: COLORS.panel, border: `1px solid ${COLORS.panelBorder}`, borderRadius: THEME.radius.card, width: "100%", maxWidth: 400, padding: "22px 24px", boxShadow: "0 12px 32px rgba(28,29,33,0.18)", textAlign: "left" }}>
+            <h2 style={{ fontWeight: 700, fontSize: 17, margin: "0 0 4px" }}>Sign in with Google</h2>
+            <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 14, lineHeight: 1.5 }}>Prototype: type your Bosta email. In production Google verifies it and the portal looks it up in the access list.</div>
+            <input autoFocus type="email" value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") submit(); }} placeholder={"name@" + AUTH_DOMAIN} aria-label="Bosta email" style={{ ...UI.input, width: "100%", boxSizing: "border-box", padding: "10px 12px", marginBottom: 14 }} />
+            <button onClick={submit} style={{ ...UI.btnPrimary, width: "100%", justifyContent: "center", padding: "11px 0" }}>Continue</button>
           </div>
         </div>
       )}

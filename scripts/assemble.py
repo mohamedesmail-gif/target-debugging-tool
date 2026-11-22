@@ -51,10 +51,10 @@ trep('      // Growth status: this month\'s avg daily (MTD) vs last month\'s (Se
 trep('Growth status vs. last month:{" "}', 'Growth status vs. the same days last month:{" "}')
 trep('{fmt(insight.growthPct, 1)}% MoM avg daily)', '{fmt(insight.growthPct, 1)}% avg daily, days 1\u2013{DATA.ptdDays} vs last month\'s days 1\u2013{DATA.ptdDays})')
 
-# ---- org levels: states, navigation, routes, level bar, AM scorecards; the merchant-profile entry points are disabled
+# ---- org levels: states, navigation, routes, level bar, AM scorecards
 trep('  const [profileBack, setProfileBack] = useState("tracker");\n  const [selectedMerchant, setSelectedMerchant] = useState(null);\n  const openMerchantProfile = (m, from) => { setSelectedMerchant({ ...m, am: m.am || amName }); setProfileBack(from || "tracker"); setScreen("profile"); };',
-     '  const [sess, setSess] = useState(hostSession || (AUTH_ENABLED ? null : AUTH_DEFAULT_SESSION));\n  const [loginMsg, setLoginMsg] = useState(null);\n  const viewerKey = sess ? sess.viewerKey : "vp";\n  const [leadTab, setLeadTab] = useState("all");\n  const [tlId, setTlId] = useState(ORG.tls[0].id);\n  const [salesId, setSalesId] = useState(ORG.sales[0].id);')
-trep('const [screen, setScreen] = useState("tracker");', 'const [screen, setScreen] = useState(hostSession ? viewerDefault(parseViewer(hostSession.viewerKey)).screen : "vp");')
+     '  const [profileBack, setProfileBack] = useState("tracker");\n  const [selectedMerchant, setSelectedMerchant] = useState(null);\n  const openMerchantProfile = (m, from) => { setSelectedMerchant({ ...m, am: m.am || amName }); setProfileBack(from || "tracker"); setScreen("profile"); };\n  const [sess, setSess] = useState(hostSession || (AUTH_ENABLED ? null : AUTH_DEFAULT_SESSION));\n  const [loginMsg, setLoginMsg] = useState(null);\n  const viewerKey = sess ? sess.viewerKey : "vp";\n  const [leadTab, setLeadTab] = useState("all");\n  const [tlId, setTlId] = useState(ORG.tls[0].id);\n  const [salesId, setSalesId] = useState(ORG.sales[0].id);\n  const [dailySpec, setDailySpec] = useState(null);\n  const [dailyFrom, setDailyFrom] = useState("vp");')
+trep('const [screen, setScreen] = useState("tracker");', 'const [screen, setScreen] = useState(hostSession ? viewerDefault(parseViewer(hostSession.viewerKey)).screen : "vp");\n  const [simSpec, setSimSpec] = useState(null);')
 trep(r'  if \(screen === "portfolio"\) \{.*?\n  \}\n  if \(screen === "profile"\) \{.*?\n  \}',
      """  const viewer = parseViewer(viewerKey), scope = scopeOf(viewer);
   const nav = {
@@ -71,6 +71,16 @@ trep(r'  if \(screen === "portfolio"\) \{.*?\n  \}\n  if \(screen === "profile"\
       else if (level === "am") { if (!scope.ams.has(amName)) setAmName(AM_NAMES.find((n) => scope.ams.has(n))); setExpandedId(null); setScreen("tracker"); }
     },
     goAm: (name) => { if (!scope.ams.has(name)) return; setAmName(name); setExpandedId(null); setScreen("tracker"); },
+    openDaily: (cur) => {
+      let spec;
+      if (cur === "vp") spec = { kind: "vp", ent: LEAD_VP_ENT };
+      else if (cur === "heads") { const tabs = LEAD_TABS.filter(([k]) => k !== "all" && leadTabAllowed(scope, k)).map(([k]) => k); spec = { kind: "head", ent: LEAD_HEAD_BY_TEAM[tabs.includes(leadTab) ? leadTab : tabs[0]] }; }
+      else if (cur === "tl") { const ok = ORG.tls.filter((t) => scope.tls.has(t.id)); spec = { kind: "tl", ent: ok.find((t) => t.id === tlId) || ok[0] }; }
+      else if (cur === "sales") { const ok = ORG.sales.filter((x) => scope.sales.has(x.id)); spec = { kind: "sales", ent: ok.find((x) => x.id === salesId) || ok[0] }; }
+      else spec = { kind: "am", ent: ORG.ams.find((a) => a.name === amName) };
+      setDailySpec(spec); setDailyFrom(cur); setScreen("daily");
+    },
+    openSimulator: prcCanUse(viewerKey) ? (id) => { setSimSpec({ id: id || null, from: screen }); setScreen("simulator"); } : null,
     session: sess,
     signOut: () => { setSess(null); setLoginMsg(AUTH_MESSAGES.signedOut); setExpandedId(null); if (onSignOut) onSignOut(); },
   };
@@ -87,35 +97,51 @@ trep(r'  if \(screen === "portfolio"\) \{.*?\n  \}\n  if \(screen === "profile"\
   };
   if (!sess) return <LoginScreen message={loginMsg} onAccount={signIn} />;
   if (screen === "portfolio") {
-    return <PortfolioScreen am={amName} amData={amData} analysis={analysis} onBack={() => setScreen("tracker")} />;
+    return <PortfolioScreen am={amName} amData={amData} analysis={analysis} onBack={() => setScreen("tracker")} onOpenMerchant={(m) => openMerchantProfile(m, "portfolio")} />;
   }
+  if (screen === "profile") {
+    return <MerchantProfileScreen merchant={selectedMerchant} onBack={() => setScreen(profileBack)} backLabel={profileBack === "portfolio" ? "\u2190 Back to portfolio overview" : "\u2190 Back to Target Tracker"} />;
+  }
+  if (screen === "simulator") return <PricingSimulatorScreen nav={nav} viewerKey={viewerKey} initialId={simSpec && simSpec.id} fromScreen={simSpec && simSpec.from} onBack={() => setScreen(simSpec && simSpec.from && simSpec.from !== "simulator" ? simSpec.from : "vp")} />;
+  if (screen === "daily" && dailySpec) return <DailyAnalysisScreen nav={nav} spec={dailySpec} onBack={() => nav.go(dailyFrom === "heads" ? "heads" : dailyFrom, dailyFrom === "heads" ? leadTab : dailyFrom === "tl" ? tlId : dailyFrom === "sales" ? salesId : undefined)} />;
   if (screen === "vp") return <LeadershipScreen nav={nav} mode="vp" />;
   if (screen === "heads") return <LeadershipScreen nav={nav} mode="heads" />;
   if (screen === "tl") return <TLScreen nav={nav} />;
   if (screen === "sales") return <SalesScreen nav={nav} />;""", regex=True)
-trep('      <div style={{ maxWidth: 1080, margin: "0 auto" }}>\n        {/* Header */}', '      <div style={{ maxWidth: 1080, margin: "0 auto" }}>\n        <LevelBar nav={nav} current="am" />\n        {/* Header */}')
+trep('      <div className="tt-wrap">\n        {/* Header */}', '      <div className="tt-wrap">\n        <LevelBar nav={nav} current="am" />\n        {/* Header */}')
 trep('Phase 1 &middot; Pickups &middot; {DATA.month}', 'Scorecard &middot; {DATA.month}')
 trep('        <AchievementBar pct={analysis.targetProgressPct} />', '        <AchievementBar pct={analysis.targetProgressPct} detail={fmt(analysis.totalActualMtdPickups) + " of " + fmt(analysis.thresholdDailyTarget) + " pickups"} />\n        <AmScoreCards amName={amName} an={analysis} />')
-trep(r'<button\n\s+onClick=\{\(e\) => \{ e\.stopPropagation\(\); openMerchantProfile\(m\); \}\}.*?\{m\.name\}\n\s+</button>', '<span>{m.name}</span>', regex=True)
-trep(r'\n          <div style=\{\{ marginTop: 4 \}\}>\n            <button\n              onClick=\{\(\) => onOpenProfile\(merchant\)\}.*?View full merchant profile.*?</button>\n          </div>', '', regex=True)
-trep('<MerchantDrilldown merchant={m} weight={m.merchantTarget} onOpenProfile={openMerchantProfile} />', '<MerchantDrilldown merchant={m} weight={m.merchantTarget} />')
 
 # ---- Merchant detail table: toggle Pickups / ASP
 trep('  const [expandedId, setExpandedId] = useState(null);', '  const [expandedId, setExpandedId] = useState(null);\n  const [tableView, setTableView] = useState("pickups"); // "pickups" | "asp"')
 trep('    const arr = [...analysis.merchants];', '    const aspC = aspContext(analysis.merchants, amName);\n    const arr = analysis.merchants.map((m) => aspFields(m, aspC));')
 trep('  }, [analysis.merchants, sortKey, sortDir]);', '  }, [analysis.merchants, sortKey, sortDir, amName]);')
 trep('      if (sortKey === "mtd") return dir * (a.mtd - b.mtd);', '      if (sortKey.startsWith("asp")) { const x = a[sortKey], y = b[sortKey]; if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1; return typeof x === "string" ? dir * x.localeCompare(y) : dir * (x - y); } // merchants without an ASP always last\n      if (sortKey === "mtd") return dir * (a.mtd - b.mtd);')
-_ts = tb['s'].index('        <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.panelBorder}`, borderRadius: 12, overflow: "hidden", marginBottom: 14 }}>\n          <div style={{ maxHeight: 520')
-_te = tb['s'].index('        <div style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12, color: COLORS.textFaint, padding: "10px 4px"')
+_ts = tb['s'].index('        <div style={{ ...UI.table, marginBottom: 14 }}>\n          <div className="tt-scroll-x" data-tt="scroll" style={{ maxHeight: 520')
+_te = tb['s'].index('        {cmpView === "target" && tableView !== "asp" && (')
 _old = tb['s'][_ts:_te]
-_toggle = """        <div style={{ display: "flex", gap: 6, alignItems: "center", margin: "-6px 0 10px" }}>
+_toggle = """        <div style={{ display: "flex", gap: 6, alignItems: "center", margin: "-2px 0 12px", flexWrap: "wrap" }}>
           {[["pickups", "Pickups"], ["asp", "ASP"]].map(([k, l]) => (
-            <button key={k} onClick={() => { setTableView(k); setSortKey(k === "asp" ? "aspGapC" : "mtdAvgDaily"); setSortDir(k === "asp" ? "asc" : "desc"); setExpandedId(null); }} style={{ padding: "5px 14px", fontSize: 12, fontWeight: 600, borderRadius: 999, cursor: "pointer", border: `1px solid ${tableView === k ? COLORS.text : COLORS.panelBorder2}`, background: tableView === k ? COLORS.text : COLORS.panel, color: tableView === k ? "#fff" : COLORS.textMuted }}>{l}</button>
+            <button key={k} onClick={() => { setTableView(k); setSortKey(k === "asp" ? "aspGapC" : "mtdAvgDaily"); setSortDir(k === "asp" ? "asc" : "desc"); setExpandedId(null); }} style={UI.pill(tableView === k)}>{l}</button>
           ))}
-          <InfoTip text="Switch the table between pickups and ASP. ASP = delivery revenue ÷ delivered parcels, Oct 1–4, compared with the same days of September. Shipping ASP = (revenue − VAS) ÷ delivered; VAS ASP = VAS revenue ÷ delivered." />
+          <InfoTip text="Switch the table between pickups and ASP. ASP = (shipping revenue + VAS revenue) ÷ delivered parcels, Oct 1–4, compared with the same days of September." />
+          <span style={{ flex: 1 }} />
+          <span style={{ fontSize: 12, color: COLORS.textMuted }}>Search:</span>
+          <input value={fid} onChange={(e) => setFid(e.target.value)} placeholder="Business ID" aria-label="Search business ID" style={{ ...UI.input, minWidth: 150 }} />
+          <input value={fname} onChange={(e) => setFname(e.target.value)} placeholder="Business name" aria-label="Search business name" style={{ ...UI.input, minWidth: 170 }} />
+          {(fid || fname) && <button onClick={() => { setFid(""); setFname(""); }} style={UI.btnSmall}>Clear</button>}
         </div>
+        {tableView === "pickups" && (
+          <div style={{ display: "flex", gap: 6, alignItems: "center", margin: "0 0 10px" }}>
+            <span style={{ ...UI.label, marginRight: 2 }}>Compare with</span>
+            {[["prev", "Last month"], ["target", "Merchants contribution"]].map(([k, l]) => (
+              <button key={k} onClick={() => { setCmpView(k); setSortKey("mtdAvgDaily"); setSortDir("desc"); setExpandedId(null); }} style={UI.pill(cmpView === k)}>{l}</button>
+            ))}
+            <InfoTip text="Last month: this month's average per working day against the same days of last month, with GR % and run rate. Merchants contribution: each merchant's weight in the portfolio target (September × 1.60 ÷ working days), with achievement %." />
+          </div>
+        )}
         {tableView === "asp" ? (
-          <AspMerchantTable rows={sortedMerchants} sortKey={sortKey} sortDir={sortDir} onSort={onSort} expandedId={expandedId} onRowClick={onRowClick} amName={amName} />
+          <AspMerchantTable rows={sortedMerchants} sortKey={sortKey} sortDir={sortDir} onSort={onSort} amName={amName} onOpenMerchant={openMerchantProfile} />
         ) : (
 """
 tb['s'] = tb['s'][:_ts] + _toggle + _old.rstrip('\n') + "\n        )}\n" + tb['s'][_te:]
@@ -124,28 +150,23 @@ tb['s'] = tb['s'][:_ts] + _toggle + _old.rstrip('\n') + "\n        )}\n" + tb['s
 # AM select + portfolio button
 trep(r'(          <select\n            value=\{amName\}.*?          </select>\n)',
      r'''          <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-\1            <button onClick={() => setScreen("portfolio")} style={{ padding: "9px 16px", borderRadius: 8, border: `1px solid ${COLORS.blue}`, background: COLORS.panel, color: COLORS.blue, fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>Portfolio overview →</button>
+\1            <button onClick={() => setScreen("portfolio")} style={{ ...UI.btn, color: COLORS.navy }}>Portfolio overview<ArrowRight size={15} strokeWidth={1.75} aria-hidden="true" /></button>
           </div>
 ''', regex=True)
 # StatCard + AchievementBar info icons
 trep('function StatCard({ label, value, sub, footnote, accent }) {', 'function StatCard({ label, value, sub, footnote, accent, info }) {')
-trep('marginBottom: 4 }}>{label}</div>', 'marginBottom: 4, display: "flex", alignItems: "center" }}>{label}{info && <InfoTip text={info} />}</div>')
-trep('>Achievement vs. Target</span>', '>Pickups achievement vs. monthly target<InfoTip text="Pickups so far \\u00f7 the monthly pickups target from the targets sheet. 100% means the target is reached. ASP and retention have their own targets in the cards below." /></span>')
+trep('<KpiHead label={label} />', '<KpiHead label={label} info={info} />')
+trep('>Achievement vs. Target</span>', '>Pickups achievement vs. monthly target<InfoTip text="Pickups so far \u00f7 the monthly pickups target from the targets sheet. 100% means the target is reached. ASP and retention have their own targets in the cards below." /></span>')
 trep('{fmt(pct, 1)}% of Target', '{fmt(pct, 1)}% of monthly target')
 infos = [
- ('<StatCard label="Monthly target"', "AM's pickup target for the month, from the October targets sheet."),
- ('<StatCard label="Target daily avg"', "Monthly target \u00f7 working days in the month: the pickups per working day the month needs on average."),
- ('<StatCard label="Required daily avg (rest of month)"', "What is still missing to reach the monthly target \u00f7 the working days that remain: the daily average needed from today on."),
- ('<StatCard label={`Actual daily avg', "Pickups so far this month \u00f7 working days elapsed (Fridays excluded)."),
- ('<StatCard label="Run rate (month end)"', "Run rate = pickups so far + the current daily average \u00d7 the remaining working days: where the month ends if the pace does not change."),
- ('<StatCard label="Hit target"', "Existing and reactivated merchants whose daily average so far is at or above their own target."),
- ('<StatCard label="Didn\'t hit target"', "Existing and reactivated merchants whose daily average so far is below their own target."),
+ ('<StatCard label="Growers"', "Merchants whose average pickups per working day so far is at least 15% above the same days of last month (GR % of +15% or more). A merchant with no pickups in the same days of last month and pickups now counts as a grower."),
+ ('<StatCard label="Droppers"', "Merchants whose average pickups per working day so far is at least 15% below the same days of last month (GR % of -15% or less), and who still have pickups this month."),
+ ('<StatCard label="Stable"', "Merchants whose GR % is between -15% and +15%."),
  ('<StatCard label="Churned"', "Merchants with no pickups yet this month."),
  ('<StatCard label="New"', "Merchants that joined this month."),
 ]
 for k, t in infos:
     trep(k, k.replace('<StatCard ', '<StatCard info="' + t.replace('"', '&quot;') + '" ', 1))
-trep('label="Monthly target"', 'label="Monthly pickups target"')
 
 # ---------------------------------------------------------------- head (loaders/helpers)
 hb, hrep = mk(R('head.jsx'))
@@ -169,7 +190,7 @@ hrep('function mpPct100(r, k) {', r'''function mpParseMonthly(mpack) {
 async function mpLoadPortfolio(am, amData, analysis) {
   const store = await mpLoadStore();
   const pf = store.pf && store.pf[am];
-  if (!pf) throw new Error("No merchants are assigned to " + am + " yet, so there is no portfolio to show.");
+  if (!pf && !(analysis && analysis.synthetic)) throw new Error("No merchants are assigned to " + am + " yet, so there is no portfolio to show.");
   const { monthly, daily } = mpParsePacks(pf[0], pf[1], true);
   MP_MODE = "portfolio";
   MP_MERCHANT = { id: "", name: am, segment: "", accountManager: am, joinDate: "", lastActivity: null };
@@ -263,10 +284,10 @@ hrep('  MP_MODE = "portfolio";\n', '  MP_MODE = "portfolio";\n  MP_CM = store.cm
 
 # ---- filtered group of merchants: the portfolio view built from the merchants' own packs
 hrep('async function mpLoadPortfolio(am, amData, analysis) {', 'async function mpLoadPortfolio(am, amData, analysis, subset) {')
-hrep('  const { monthly, daily } = mpParsePacks(pf[0], pf[1], true);\n  MP_MODE = "portfolio";', '  const list = subset || analysis.merchants;\n  const { monthly, daily } = subset ? mpAggregateSubset(store, subset) : mpParsePacks(pf[0], pf[1], true);\n  MP_MODE = "portfolio";')
+hrep('  const { monthly, daily } = mpParsePacks(pf[0], pf[1], true);\n  MP_MODE = "portfolio";', '  const list = subset || analysis.merchants;\n  const { monthly, daily } = (subset || !pf) ? mpAggregateSubset(store, list) : mpParsePacks(pf[0], pf[1], true);\n  MP_MODE = "portfolio";')
 hrep('  analysis.merchants.forEach((m) => {\n    const e = store.p[m.id];', '  list.forEach((m) => {\n    const e = store.p[m.id];')
 hrep('  const n = analysis.merchants.length || 1;', '  const n = list.length || 1;')
-hrep('MP_PF = { am, target: amData.target, team: amData.team || "", count: amData.base, analysis, parsed,', 'MP_PF = { am, target: amData.target, team: amData.team || "", count: list.length, total: amData.base, filtered: !!subset, analysis: subset ? mpSubsetAnalysis(subset) : analysis, parsed,')
+hrep('MP_PF = { am, target: amData.target, team: amData.team || "", count: amData.base, analysis, parsed,', 'MP_PF = { am, target: amData.target, team: amData.team || "", kind: amData.kind || "account manager", skipped: amData.skipped || 0, count: list.length, total: amData.base, filtered: !!subset, analysis: subset ? mpSubsetAnalysis(subset) : analysis, parsed,')
 hrep('// top merchants of the portfolio for one month and one field (clickable items)', r"""// Sum of the selected merchants. Additive fields are exact; DSR is exact too when weighted by pickups (its denominator is the
 // pickups of the cohort); ASR weighted by pickups is approximate (within about 1 point) for months before October.
 function mpAggregateSubset(store, merchants) {
@@ -294,8 +315,7 @@ function mpAggregateSubset(store, merchants) {
   return { monthly, daily: days || [] };
 }
 function mpSubsetAnalysis(merchants) {
-  const t = merchants.filter((m) => m.hasTarget);
-  return { merchants, hitCount: t.filter((m) => !m.missedTarget).length, missedCount: t.filter((m) => m.missedTarget).length, churnedCount: merchants.filter((m) => m.category === "Churned").length, newCount: merchants.filter((m) => m.category === "New").length };
+  return { merchants, growerCount: merchants.filter((m) => m.standing === "Grower").length, dropperCount: merchants.filter((m) => m.standing === "Dropper").length, stableCount: merchants.filter((m) => m.standing === "Stable").length, churnedCount: merchants.filter((m) => m.category === "Churned").length, newCount: merchants.filter((m) => m.category === "New").length };
 }
 
 // top merchants of the portfolio for one month and one field (clickable items)""")
@@ -314,7 +334,14 @@ tail = ('// ---- embedded profile data (generated from mart.v_merchant_monthly_w
         '// {"p": {business_id: [monthlyPack, dailyPack]}, "x": {...}, "pf": {account_manager: [...]}, "cm": {current-month parcel issues, tickets, failed attempts}}\n'
         'const MP_DATA_B64 = __P.store;\n')
 
-out = tb['s'] + '\n' + hb['s'] + R('m1_prims.jsx') + R('m2_overview.jsx') + R('m5_compare.jsx') + R('m6_cm.jsx') + R('m3_issues.jsx') + R('m7_org.jsx') + R('m8_lead.jsx') + R('m9_auth.jsx') + R('m4_screens.jsx') + '\n' + tail
+# pricing_engine.js is plain JS (no JSX, no React) so tests/pricing.mjs can run it on its own; m11_pricing.jsx is its UI.
+# Both go after m8_lead.jsx, which defines parseViewer(), and before m4_screens.jsx, which mounts the tab and the button.
+out = tb['s'] + '\n' + hb['s'] + R('m1_prims.jsx') + R('m2_overview.jsx') + R('m5_compare.jsx') + R('m6_cm.jsx') + R('m14_customers.jsx') + R('m3_issues.jsx') + R('m7_org.jsx') + R('m8_lead.jsx') + R('m13_live.jsx') + R('pricing_engine.js') + R('m11_pricing.jsx') + R('m12_simulator.jsx') + R('m10_daily.jsx') + R('m9_auth.jsx') + R('m4_screens.jsx') + '\n' + tail
+
+# the pricing gate needs to know who is signed in; the app computes it once per render
+_vk_old = '  const viewer = parseViewer(viewerKey), scope = scopeOf(viewer);'
+assert out.count(_vk_old) == 1, ('PRC_VIEWER_KEY patch: expected 1 viewer line, found', out.count(_vk_old))
+out = out.replace(_vk_old, _vk_old + '\n  PRC_VIEWER_KEY = viewerKey;\n  PRC_SCREEN = screen;\n  PRC_OPEN_SIM = (id) => { setSimSpec({ id, from: screen }); setScreen("simulator"); };')
 # the window labels in the source say "Oct 1-4" / "Sep 1-4": fill them with the days of the data (ORG.days)
 _N = _json.load(open('../data/org_final.json', encoding='utf-8'))['days']
 out = out.replace('Oct 1\u20134', 'Oct 1\u2013%d' % _N).replace('Sep 1\u20134', 'Sep 1\u2013%d' % _N)
@@ -335,15 +362,27 @@ export default function TargetTracker(props = {}) {
     return () => { live = false; };
   }, [url]);
   const App = useMemo(() => (payload ? __buildApp(payload) : null), [payload]);
-  if (error) return <div style={{ fontFamily: "'Lato', Arial, sans-serif", color: "#A24A3C", padding: 40, textAlign: "center" }}>Could not load the data ({error}). Check that {url} is reachable.</div>;
-  if (!App) return <div style={{ fontFamily: "'Lato', Arial, sans-serif", color: "#5F726D", padding: 40, textAlign: "center" }}>Loading the data...</div>;
-  return <App {...props} />;
+  const note = (tone, title, text, action) => (
+    <div role={tone === "error" ? "alert" : "status"} aria-live="polite" style={{ maxWidth: 440, margin: "12vh auto 0", padding: "24px 22px", background: THEME.color.card, border: `1px solid ${THEME.color.line}`, borderRadius: THEME.radius.card, textAlign: "center" }}>
+      {tone === "error" ? <AlertCircle size={28} color={THEME.color.neg} aria-hidden="true" /> : <span className="tt-spin" aria-hidden="true" />}
+      <div style={{ fontSize: 16, fontWeight: 700, marginTop: 10 }}>{title}</div>
+      <div style={{ fontSize: 13, color: THEME.color.text2, marginTop: 6, lineHeight: 1.5 }}>{text}</div>
+      {action}
+    </div>
+  );
+  let body;
+  if (error) body = note("error", "Could not load the data", <span>{error}. Check that {url} is reachable.</span>, <button onClick={() => window.location.reload()} style={{ marginTop: 14, padding: "9px 18px", borderRadius: THEME.radius.btn, border: "none", background: THEME.color.navy, color: "#fff", fontSize: 13, fontWeight: 600 }}>Try again</button>);
+  else if (!App) body = note("loading", "Loading the data", "This takes a few seconds.");
+  else body = <App {...props} />;
+  return <div className="tt-root"><style>{THEME_CSS + ".tt-spin{display:inline-block;width:22px;height:22px;border:3px solid " + THEME.color.line + ";border-top-color:" + THEME.color.navy + ";border-radius:50%;animation:tt-rot .8s linear infinite}@keyframes tt-rot{to{transform:rotate(360deg)}}"}</style>{body}</div>;
 }
 """
-out = _head_imports + LOADER + "\nfunction __buildApp(__P) {\n" + _body + "\nreturn TargetTrackerApp;\n}\n"
+out = _head_imports + R('theme.js') + LOADER + "\nfunction __buildApp(__P) {\n" + _body + "\nreturn TargetTrackerApp;\n}\n"
 _store = open('../data/profile_store.b64').read().strip()
 _acc = '../data/access_hashed.json'
-_payload = {'access': _json.load(open(_acc)) if os.path.exists(_acc) else {}, 'data': _D, 'org': _json.load(open('../data/org_final.json', encoding='utf-8')), 'store': _store}
+_cs = '../data/consignee_scores.json'   # consignee score bands per merchant and month (Customers tab); absent: the tab says no data yet
+_cd = '../data/company_daily.json'   # all pickups of the company per day (VP Daily analysis); absent in older packs: the VP view then shows the roster only
+_payload = {'company': _json.load(open(_cd)) if os.path.exists(_cd) else None, 'consignee': _json.load(open(_cs)) if os.path.exists(_cs) else None, 'access': _json.load(open(_acc)) if os.path.exists(_acc) else {}, 'data': _D, 'org': _json.load(open('../data/org_final.json', encoding='utf-8')), 'store': _store}
 open('../dist/payload.json', 'w', encoding='utf-8').write(_json.dumps(_payload, ensure_ascii=False, separators=(',', ':')))
 print('payload MB', os.path.getsize('../dist/payload.json') / 1e6)
 open('../dist/target_tracker.jsx', 'w', encoding='utf-8').write(out)

@@ -3,7 +3,7 @@
 // UI primitives for the Merchant Profile and the AM Portfolio overview
 // (hand-rolled SVG: no y-axis, no gridlines, value labels only where they carry the story)
 // ============================================================================
-const MP_MONO = "'IBM Plex Mono', monospace";
+const MP_MONO = THEME.font;
 
 function mpCompact(n, d) {
   if (n == null || Number.isNaN(n)) return "—";
@@ -18,21 +18,41 @@ const mpOk = (v) => v != null && !Number.isNaN(v);
 
 function InfoTip({ text }) {
   const [open, setOpen] = useState(false);
+  const [flip, setFlip] = useState(false); // open towards the left when the icon is close to the right edge of the screen
   const hovered = useRef(false); // hover already opened it: a click must not close it again
+  const ref = useRef(null);
+  const show = () => { try { const r = ref.current.getBoundingClientRect(); setFlip(r.left + 244 > window.innerWidth - 8); } catch (err) { /* no layout in tests */ } setOpen(true); };
   return (
-    <span style={{ position: "relative", display: "inline-flex", marginLeft: 6, verticalAlign: "middle", textTransform: "none", letterSpacing: 0 }}
-      onMouseEnter={() => { hovered.current = true; setOpen(true); }} onMouseLeave={() => { hovered.current = false; setOpen(false); }}>
-      <span tabIndex={0} aria-label="How this is calculated" onClick={(e) => { e.stopPropagation(); if (hovered.current) setOpen(true); else setOpen((o) => !o); }} onFocus={() => setOpen(true)} onBlur={() => setOpen(false)}
-        style={{ width: 14, height: 14, borderRadius: 7, border: `1px solid ${COLORS.panelBorder2}`, color: COLORS.textFaint, fontSize: 9.5, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "help", fontFamily: MP_MONO, background: COLORS.panel }}>i</span>
+    <span ref={ref} style={{ position: "relative", display: "inline-flex", marginLeft: 6, verticalAlign: "middle", textTransform: "none", letterSpacing: 0 }}
+      onMouseEnter={() => { hovered.current = true; show(); }} onMouseLeave={() => { hovered.current = false; setOpen(false); }}>
+      <span tabIndex={0} role="button" aria-label="How this is calculated" aria-expanded={open} onClick={(e) => { e.stopPropagation(); if (hovered.current) show(); else if (open) setOpen(false); else show(); }} onFocus={show} onBlur={() => setOpen(false)}
+        onKeyDown={(e) => { if (e.key === "Escape") setOpen(false); if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open ? setOpen(false) : show(); } }}
+        style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 18, height: 18, borderRadius: 999, color: COLORS.icon, cursor: "help" }}>
+        <Info size={14} strokeWidth={1.75} aria-hidden="true" />
+      </span>
       {open && (
-        <span style={{ position: "absolute", left: -6, top: 20, zIndex: 60, width: 232, background: COLORS.text, color: "#fff", fontSize: 11.5, lineHeight: 1.45, fontWeight: 400, padding: "8px 10px", borderRadius: 8, boxShadow: "0 6px 18px rgba(27,35,51,0.25)", whiteSpace: "normal", textAlign: "left" }}>{text}</span>
+        <span role="tooltip" style={{ position: "absolute", [flip ? "right" : "left"]: -6, top: 24, zIndex: 60, width: 244, maxWidth: "calc(100vw - 24px)", background: COLORS.navy, color: "#fff", fontSize: 12, lineHeight: 1.5, fontWeight: 400, padding: "10px 12px", borderRadius: THEME.radius.input, boxShadow: "0 8px 24px rgba(33,37,75,0.18)", whiteSpace: "normal", textAlign: "left" }}>{text}</span>
       )}
     </span>
   );
 }
 
+// chart width follows its container (phone, tablet, desktop), so labels keep their real size; jsdom has no layout and keeps 600
+function useChartW(def = 600) {
+  const ref = useRef(null);
+  const [w, setW] = useState(def);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === "undefined") return undefined;
+    const upd = () => { const r = el.getBoundingClientRect().width; if (r > 40) setW(Math.round(Math.min(Math.max(r, 280), 900))); };
+    upd(); const ro = new ResizeObserver(upd); ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return [w, ref];
+}
+
 function MPEmpty({ text }) {
-  return <div style={{ fontSize: 12, color: COLORS.textFaint, padding: "26px 0", textAlign: "center" }}>{text || "No data for this period"}</div>;
+  return <div role="status" style={{ fontSize: 12.5, color: COLORS.textMuted, padding: "28px 12px", textAlign: "center", background: COLORS.panel, border: `1px dashed ${COLORS.panelBorder2}`, borderRadius: THEME.radius.tile }}>{text || "No data for this period"}</div>;
 }
 
 function MPTooltip({ x, y, width, title, lines }) {
@@ -40,9 +60,9 @@ function MPTooltip({ x, y, width, title, lines }) {
   const left = x > width * 0.62 ? x - w - 10 : x + 10;
   return (
     <g transform={`translate(${left}, ${y})`} style={{ pointerEvents: "none" }}>
-      <rect x={0} y={0} width={w} height={22 + lines.length * 14} rx={6} fill={COLORS.text} opacity={0.95} />
+      <rect x={0} y={0} width={w} height={22 + lines.length * 14} rx={10} fill={COLORS.navy} opacity={0.96} />
       <text x={9} y={15} fontSize={10.5} fontWeight={700} fill="#fff">{title}</text>
-      {lines.map((l, i) => <text key={i} x={9} y={30 + i * 14} fontSize={10.5} fill="#E6E9F0">{l}</text>)}
+      {lines.map((l, i) => <text key={i} x={9} y={30 + i * 14} fontSize={10.5} fill="#E7E8F2">{l}</text>)}
     </g>
   );
 }
@@ -57,7 +77,7 @@ function mpTickIdx(n) {
 }
 
 function MPLineChart({ data, xKey, series, height = 170, fmtFn, yFormat, zeroBase = true, partialLast = false }) {
-  const W = 600, padL = 12, padR = 54, padB = 24;
+  const [W, wrapRef] = useChartW(); const padL = 12, padR = 54, padB = 24;
   const padT = series.length > 1 ? 34 : 24;
   const iw = W - padL - padR, ih = height - padT - padB;
   const svgRef = useRef(null);
@@ -87,19 +107,13 @@ function MPLineChart({ data, xKey, series, height = 170, fmtFn, yFormat, zeroBas
   };
   const ticks = mpTickIdx(n);
   return (
-    <svg ref={svgRef} viewBox={`0 0 ${W} ${height}`} style={{ width: "100%", height: "auto", display: "block" }} onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
-      <defs>
-        <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={series[0].color || COLORS.blue} stopOpacity="0.16" />
-          <stop offset="100%" stopColor={series[0].color || COLORS.blue} stopOpacity="0" />
-        </linearGradient>
-      </defs>
+    <div ref={wrapRef} style={{ width: "100%" }}><svg ref={svgRef} role="img" aria-label="Line chart" viewBox={`0 0 ${W} ${height}`} style={{ width: "100%", height: "auto", display: "block" }} onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
       <line x1={padL} x2={W - padR} y1={base} y2={base} stroke={COLORS.panelBorder} strokeWidth={1} />
       {series.length === 1 && data.slice(0, solidTo).every((d) => mpOk(d[series[0].key])) && solidTo > 1 && (
-        <path d={`${path(series[0].key, 0, solidTo)} L${x(solidTo - 1).toFixed(1)} ${base} L${x(0).toFixed(1)} ${base} Z`} fill={`url(#${gid})`} />
+        <path d={`${path(series[0].key, 0, solidTo)} L${x(solidTo - 1).toFixed(1)} ${base} L${x(0).toFixed(1)} ${base} Z`} fill={fillOf(series[0].color || COLORS.chart)} fillOpacity={0.07} />
       )}
       {series.map((s, si) => {
-        const color = s.color || COLORS.blue;
+        const color = fillOf(s.color || COLORS.chart);
         const ids = new Set();
         const present = data.map((d, i) => [d[s.key], i]).filter(([v]) => mpOk(v));
         if (present.length) {
@@ -128,9 +142,9 @@ function MPLineChart({ data, xKey, series, height = 170, fmtFn, yFormat, zeroBas
         });
         return (
           <g key={s.key}>
-            <path d={path(s.key, 0, solidTo)} fill="none" stroke={color} strokeWidth={2.2} strokeLinejoin="round" strokeLinecap="round" />
+            <path d={path(s.key, 0, solidTo)} fill="none" stroke={color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
             {partialLast && n > 1 && mpOk(data[n - 2][s.key]) && mpOk(data[n - 1][s.key]) && (
-              <path d={`M${x(n - 2).toFixed(1)} ${y(data[n - 2][s.key]).toFixed(1)} L${x(n - 1).toFixed(1)} ${y(data[n - 1][s.key]).toFixed(1)}`} fill="none" stroke={color} strokeWidth={2.2} strokeDasharray="4 4" strokeLinecap="round" />
+              <path d={`M${x(n - 2).toFixed(1)} ${y(data[n - 2][s.key]).toFixed(1)} L${x(n - 1).toFixed(1)} ${y(data[n - 1][s.key]).toFixed(1)}`} fill="none" stroke={color} strokeWidth={2} strokeDasharray="4 4" strokeLinecap="round" />
             )}
             {labels}
           </g>
@@ -141,21 +155,21 @@ function MPLineChart({ data, xKey, series, height = 170, fmtFn, yFormat, zeroBas
       ))}
       {series.length > 1 && (
         <g>{series.map((s, si) => { const off = series.slice(0, si).reduce((a, t) => a + t.label.length * 6.4 + 26, 0); return (
-          <g key={s.key} transform={`translate(${padL + off}, 8)`}><circle cx={4} cy={0} r={3.5} fill={s.color || COLORS.blue} /><text x={11} y={3.5} fontSize={10.5} fill={COLORS.textMuted}>{s.label}</text></g>); })}</g>
+          <g key={s.key} transform={`translate(${padL + off}, 8)`}><circle cx={4} cy={0} r={3.5} fill={fillOf(s.color || COLORS.chart)} /><text x={11} y={3.5} fontSize={10.5} fill={COLORS.textMuted}>{s.label}</text></g>); })}</g>
       )}
       {hover != null && (
         <g>
-          <line x1={x(hover)} x2={x(hover)} y1={padT} y2={base} stroke={COLORS.textFaint} strokeDasharray="3 3" />
-          {series.map((s) => mpOk(data[hover][s.key]) && <circle key={s.key} cx={x(hover)} cy={y(data[hover][s.key])} r={4.5} fill={s.color || COLORS.blue} stroke="#fff" strokeWidth={2} />)}
+          <line x1={x(hover)} x2={x(hover)} y1={padT} y2={base} stroke={COLORS.icon} strokeDasharray="3 3" />
+          {series.map((s) => mpOk(data[hover][s.key]) && <circle key={s.key} cx={x(hover)} cy={y(data[hover][s.key])} r={4.5} fill={fillOf(s.color || COLORS.chart)} stroke="#fff" strokeWidth={2} />)}
           <MPTooltip x={x(hover)} y={padT - 6} width={W} title={String(data[hover][xKey])} lines={series.map((s) => `${s.label}: ${f(data[hover][s.key])}`)} />
         </g>
       )}
-    </svg>
+    </svg></div>
   );
 }
 
 function MPBarChart({ data, xKey, series, height = 170, stacked = false, fmtFn, partialLast = false }) {
-  const W = 600, padL = 8, padR = 8, padB = 24;
+  const [W, wrapRef] = useChartW(); const padL = 8, padR = 8, padB = 24;
   const padT = series.length > 1 ? 36 : 24;
   const iw = W - padL - padR, ih = height - padT - padB;
   const svgRef = useRef(null);
@@ -179,7 +193,7 @@ function MPBarChart({ data, xKey, series, height = 170, stacked = false, fmtFn, 
   };
   const ticks = mpTickIdx(n);
   return (
-    <svg ref={svgRef} viewBox={`0 0 ${W} ${height}`} style={{ width: "100%", height: "auto", display: "block" }} onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
+    <div ref={wrapRef} style={{ width: "100%" }}><svg ref={svgRef} role="img" aria-label="Bar chart" viewBox={`0 0 ${W} ${height}`} style={{ width: "100%", height: "auto", display: "block" }} onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
       <line x1={padL} x2={W - padR} y1={base} y2={base} stroke={COLORS.panelBorder} strokeWidth={1} />
       {data.map((d, i) => {
         const groupWidth = stacked || series.length === 1 ? bw : bw * series.length;
@@ -189,15 +203,15 @@ function MPBarChart({ data, xKey, series, height = 170, stacked = false, fmtFn, 
         return (
           <g key={i} opacity={hover == null || hover === i ? 1 : 0.55}>
             {series.map((s, si) => {
-              const v = d[s.key] || 0; const color = s.color || COLORS.blue;
-              if (stacked) { const top = y(acc + v), h = y(acc) - top; acc += v; return <rect key={s.key} x={x0} y={top} width={bw} height={Math.max(0, h)} fill={color} opacity={isPartial ? 0.5 : 1} rx={si === series.length - 1 ? 3 : 0} />; }
-              const bx = x0 + si * bw; return <rect key={s.key} x={bx} y={y(v)} width={bw - 2} height={Math.max(0, base - y(v))} fill={color} opacity={isPartial ? 0.5 : 1} rx={3} />;
+              const v = d[s.key] || 0; const color = fillOf(s.color || COLORS.chart);
+              if (stacked) { const top = y(acc + v), h = y(acc) - top; acc += v; return <rect key={s.key} x={x0} y={top} width={bw} height={Math.max(0, h)} fill={color} opacity={isPartial ? 0.5 : 1} rx={si === series.length - 1 ? 4 : 0} />; }
+              const bx = x0 + si * bw; return <rect key={s.key} x={bx} y={y(v)} width={bw - 2} height={Math.max(0, base - y(v))} fill={color} opacity={isPartial ? 0.5 : 1} rx={4} />;
             })}
             {(showAll || i === maxI || i === n - 1) && (stacked || series.length === 1) && (
               <text x={x0 + bw / 2} y={y(totals[i]) - 6} textAnchor="middle" fontSize={10.5} fontWeight={700} fill={COLORS.text}>{f(totals[i])}</text>
             )}
             {!stacked && series.length > 1 && series.map((s, si) => (showAll || (i === n - 1) || totals[i] === (d[s.key] || 0) && i === maxI) && (d[s.key] || 0) > 0 ? (
-              <text key={s.key} x={x0 + si * bw + (bw - 2) / 2} y={y(d[s.key] || 0) - 5} textAnchor="middle" fontSize={10} fontWeight={700} fill={s.color || COLORS.blue}>{f(d[s.key] || 0)}</text>) : null)}
+              <text key={s.key} x={x0 + si * bw + (bw - 2) / 2} y={y(d[s.key] || 0) - 5} textAnchor="middle" fontSize={10} fontWeight={700} fill={fillOf(s.color || COLORS.chart)}>{f(d[s.key] || 0)}</text>) : null)}
           </g>
         );
       })}
@@ -206,10 +220,10 @@ function MPBarChart({ data, xKey, series, height = 170, stacked = false, fmtFn, 
       ))}
       {series.length > 1 && (
         <g>{series.map((s, si) => { const off = series.slice(0, si).reduce((a, t) => a + t.label.length * 6.4 + 26, 0); return (
-          <g key={s.key} transform={`translate(${padL + off}, 8)`}><rect x={0} y={-4} width={8} height={8} rx={2} fill={s.color || COLORS.blue} /><text x={13} y={3.5} fontSize={10.5} fill={COLORS.textMuted}>{s.label}</text></g>); })}</g>
+          <g key={s.key} transform={`translate(${padL + off}, 8)`}><rect x={0} y={-4} width={8} height={8} rx={2} fill={fillOf(s.color || COLORS.chart)} /><text x={13} y={3.5} fontSize={10.5} fill={COLORS.textMuted}>{s.label}</text></g>); })}</g>
       )}
       {hover != null && <MPTooltip x={padL + hover * slot + slot / 2} y={padT - 6} width={W} title={String(data[hover][xKey])} lines={series.map((s) => `${s.label}: ${f(data[hover][s.key] || 0)}`)} />}
-    </svg>
+    </svg></div>
   );
 }
 
@@ -225,9 +239,9 @@ function MPRankBars({ data, fmtFn, maxRows = 8, onItemClick, color, showShare = 
       {rows.map((d, i) => (
         <div key={i} style={{ display: "grid", gridTemplateColumns: "minmax(70px, 34%) 1fr auto", gap: 10, alignItems: "center", fontSize: 12 }}>
           <div onClick={onItemClick && d.item ? () => onItemClick(d.item) : undefined} title={d.label}
-            style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: onItemClick && d.item ? COLORS.blue : COLORS.textMuted, cursor: onItemClick && d.item ? "pointer" : "default" }}>{d.label}</div>
-          <div style={{ height: 8, borderRadius: 4, background: COLORS.slateDim }}>
-            <div style={{ width: `${Math.max(3, (d.value / max) * 100)}%`, height: "100%", borderRadius: 4, background: d.color || color || COLORS.blue }} />
+            style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: onItemClick && d.item ? COLORS.navy : COLORS.textMuted, fontWeight: onItemClick && d.item ? 600 : 400, cursor: onItemClick && d.item ? "pointer" : "default" }}>{d.label}</div>
+          <div style={{ height: 6, borderRadius: 999, background: COLORS.slateDim }}>
+            <div style={{ width: `${Math.max(3, (d.value / max) * 100)}%`, height: "100%", borderRadius: 999, background: fillOf(d.color || color || COLORS.chart) }} />
           </div>
           <div style={{ fontFamily: MP_MONO, fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap" }}>{f(d.value)}{showShare && sum > 0 && <span style={{ color: COLORS.textFaint, fontWeight: 400 }}> · {Math.round((d.value / sum) * 100)}%</span>}</div>
         </div>
@@ -268,16 +282,24 @@ function mpDeltaOf(cur, prev, o) {
   return { text: `${mpArrow(ch, flat)} ${Math.abs(ch).toFixed(o.rate ? 1 : 0)}${o.rate ? " pts" : "%"} vs ${o.label}`, tone: mpTone(ch, o.good, flat) };
 }
 
+// "▲ 12% vs Sep" in the data strings becomes a Lucide trend icon + the text (and a hidden "up" / "down" / "flat" for screen readers)
+function MPTrendText({ text }) {
+  const parts = String(text).split(/(▲|▼|•)/);
+  if (parts.length === 1) return <>{text}</>;
+  return <>{parts.map((p, i) => p === "▲" ? <span key={i} style={{ display: "inline-flex", verticalAlign: "-2px" }}><TrendingUp size={13} strokeWidth={2} aria-hidden="true" /><span className="tt-sr">up</span></span>
+    : p === "▼" ? <span key={i} style={{ display: "inline-flex", verticalAlign: "-2px" }}><TrendingDown size={13} strokeWidth={2} aria-hidden="true" /><span className="tt-sr">down</span></span>
+    : p === "•" ? <span key={i} style={{ display: "inline-flex", verticalAlign: "-2px" }}><Minus size={13} strokeWidth={2} aria-hidden="true" /><span className="tt-sr">flat</span></span> : p)}</>;
+}
 function MPInsightLine({ ins }) {
   if (!ins) return null;
   const color = ins.tone === "good" ? COLORS.teal : ins.tone === "bad" ? COLORS.coral : COLORS.textMuted;
-  return <div style={{ fontSize: 12, color, margin: "0 0 8px", fontWeight: 500 }}>{ins.text}</div>;
+  return <div style={{ fontSize: 12, color, margin: "0 0 8px", fontWeight: 500 }}><MPTrendText text={ins.text} /></div>;
 }
 function MPChartCard({ title, info, insight, children }) {
   return (
-    <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.panelBorder}`, borderRadius: 12, padding: "14px 16px 10px", marginBottom: 14 }}>
-      <div style={{ display: "flex", alignItems: "center", marginBottom: insight ? 2 : 8 }}>
-        <span style={{ fontSize: 13.5, fontWeight: 700 }}>{title}</span>{info && <InfoTip text={info} />}
+    <div style={{ ...UI.card, padding: "16px 18px 12px", marginBottom: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", marginBottom: insight ? 2 : 10 }}>
+        <span style={{ fontSize: 14, fontWeight: 600 }}>{title}</span>{info && <InfoTip text={info} />}
       </div>
       <MPInsightLine ins={insight} />
       {children}
@@ -285,63 +307,68 @@ function MPChartCard({ title, info, insight, children }) {
   );
 }
 function MPGrid2({ children, min }) {
-  return <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fit, minmax(${min || 340}px, 1fr))`, gap: 14 }}>{children}</div>;
+  return <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, ${min || 340}px), 1fr))`, gap: 14 }}>{children}</div>;
 }
 function MPSection({ title }) {
-  return <div style={{ margin: "24px 0 10px", fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: COLORS.textFaint, fontFamily: MP_MONO, fontWeight: 600 }}>{title}</div>;
+  return <h2 style={{ ...UI.eyebrow, margin: "26px 0 10px" }}>{title}</h2>;
 }
 function MPDeltaChip({ d }) {
   const c = d.tone === "good" ? [COLORS.tealDim, COLORS.teal] : d.tone === "bad" ? [COLORS.coralDim, COLORS.coral] : [COLORS.slateDim, COLORS.slate];
-  return <span style={{ background: c[0], color: c[1], borderRadius: 999, padding: "1px 7px", fontSize: 10.5, fontWeight: 700 }}>{d.text}</span>;
+  return <span style={{ background: c[0], color: c[1], borderRadius: 999, padding: "2px 8px", fontSize: 11, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 3 }}><MPTrendText text={d.text} /></span>;
 }
 function MPKpi({ label, value, sub, delta, info, accent, prev }) {
   return (
-    <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.panelBorder}`, borderRadius: 12, padding: "13px 15px" }}>
-      <div style={{ fontSize: 10.5, color: COLORS.textFaint, textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 6, display: "flex", alignItems: "center" }}>{label}{info && <InfoTip text={info} />}</div>
-      <div style={{ fontFamily: MP_MONO, fontSize: 22, fontWeight: 700, color: accent || COLORS.text, lineHeight: 1.1 }}>{value}</div>
+    <div style={{ ...UI.tile }}>
+      <KpiHead label={label} info={info} />
+      <div style={{ ...UI.kpi, color: accent || COLORS.text }}>{value}</div>
       <div style={{ marginTop: 7, display: "flex", gap: 6, alignItems: "center", fontSize: 11, color: COLORS.textMuted, flexWrap: "wrap" }}>{delta && <MPDeltaChip d={delta} />}{sub && <span>{sub}</span>}</div>
-      {prev && <div style={{ marginTop: 5, fontSize: 11, color: COLORS.textFaint, fontFamily: MP_MONO }}>{prev}</div>}
+      {prev && <div style={{ marginTop: 5, fontSize: 11, color: COLORS.textFaint }}>{prev}</div>}
     </div>
   );
 }
 
 function MPChip({ label, value, tone, tag, info }) {
-  const map = { coral: [COLORS.coralDim, COLORS.coral], teal: [COLORS.tealDim, COLORS.teal], amber: [COLORS.amberDim, COLORS.amber], purple: [COLORS.purpleDim, COLORS.purple], blue: ["rgba(76,110,245,0.10)", COLORS.blue] };
+  const map = { coral: [COLORS.coralDim, COLORS.coral], teal: [COLORS.tealDim, COLORS.teal], amber: [COLORS.amberDim, COLORS.amber], purple: [COLORS.purpleDim, COLORS.purple], blue: [THEME.color.navyTint, COLORS.navy] };
   const c = map[tone] || [COLORS.slateDim, COLORS.textMuted];
   return (
-    <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: c[0], color: c[1], borderRadius: 8, padding: "6px 10px", fontSize: 12 }}>
-      <span style={{ color: COLORS.textFaint, fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.04em" }}>{label}</span>
+    <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: c[0], color: c[1], borderRadius: 12, padding: "6px 11px", fontSize: 12 }}>
+      <span style={{ color: COLORS.textFaint, fontSize: 10.5 }}>{label}</span>
       <span style={{ fontWeight: 700 }}>{value}</span>
-      {tag && <span style={{ fontSize: 9.5, color: COLORS.textFaint, border: `1px dashed ${COLORS.panelBorder2}`, borderRadius: 4, padding: "1px 4px" }}>{tag}</span>}
+      {tag && <span style={{ fontSize: 9.5, color: COLORS.textFaint, border: `1px dashed ${COLORS.panelBorder2}`, borderRadius: 6, padding: "1px 5px" }}>{tag}</span>}
       {info && <InfoTip text={info} />}
     </div>
   );
 }
 function MPPillRow({ tabs, active, onChange }) {
   return (
-    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
+    <div role="tablist" style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
       {tabs.map((t) => (
-        <button key={t} onClick={() => onChange(t)} style={{ padding: "6px 13px", fontSize: 12, fontWeight: 600, borderRadius: 999, cursor: "pointer", border: `1px solid ${active === t ? COLORS.text : COLORS.panelBorder2}`, background: active === t ? COLORS.text : COLORS.panel, color: active === t ? "#fff" : COLORS.textMuted }}>{t}</button>
+        <button key={t} role="tab" aria-selected={active === t} onClick={() => onChange(t)} style={UI.pill(active === t)}>{t}</button>
       ))}
     </div>
   );
 }
 function MPBanner({ text }) {
   return (
-    <div style={{ display: "flex", gap: 9, alignItems: "flex-start", background: COLORS.amberDim, border: `1px solid #EEDDBB`, borderRadius: 8, padding: "9px 12px", marginBottom: 14, fontSize: 12, color: "#8A5D0A" }}>
-      <Info size={14} style={{ marginTop: 1, flexShrink: 0 }} /><span>{text}</span>
+    <div role="note" style={{ display: "flex", gap: 9, alignItems: "flex-start", background: COLORS.amberDim, border: `1px solid ${THEME.color.line}`, borderRadius: THEME.radius.input, padding: "10px 14px", marginBottom: 14, fontSize: 12.5, color: COLORS.amber }}>
+      <Info size={16} strokeWidth={1.75} style={{ marginTop: 1, flexShrink: 0 }} aria-hidden="true" /><span>{text}</span>
     </div>
   );
 }
 function MPFilterInput({ placeholder, value, onChange }) {
-  return <input value={value || ""} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} style={{ padding: "6px 10px", borderRadius: 8, border: `1px solid ${COLORS.panelBorder2}`, fontSize: 12, minWidth: 120 }} />;
+  return (
+    <span style={{ position: "relative", display: "inline-flex", alignItems: "center", minWidth: 0 }}>
+      <Search size={14} strokeWidth={1.75} color={COLORS.icon} aria-hidden="true" style={{ position: "absolute", left: 10, pointerEvents: "none" }} />
+      <input value={value || ""} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} aria-label={placeholder} style={{ ...UI.input, paddingLeft: 30, minWidth: 120 }} />
+    </span>
+  );
 }
 function mpApplyFilters(rows, fields, filterState) {
   return rows.filter((r) => fields.every((f) => !filterState[f] || String(r[f] || "").toLowerCase().includes(filterState[f].toLowerCase())));
 }
 
 // ---- conditional-format table: every cell is coloured by its change vs the previous period ----
-const MP_HEAT = { good: "rgba(14,155,130,0.17)", bad: "rgba(214,69,69,0.16)", flat: "rgba(120,130,145,0.11)" };
+const MP_HEAT = { good: "rgba(29,158,117,0.16)", bad: "rgba(163,45,45,0.12)", flat: "rgba(136,135,128,0.12)" };
 function mpHeatFill(c, rows, i, mode, tol, prevOf) {
   if (!c.heat) return undefined;
   if (rows[i]._partial) return undefined;
@@ -364,7 +391,7 @@ function MPHeatLegend() {
     <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "0 0 10px", fontSize: 12, color: COLORS.textMuted }}>
       <span style={{ display: "inline-flex", gap: 8 }}>
         {[["good", "better"], ["flat", "stable"], ["bad", "worse"]].map(([k, l]) => (
-          <span key={k} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11 }}><span style={{ width: 11, height: 11, borderRadius: 3, background: MP_HEAT[k], border: `1px solid ${COLORS.panelBorder}` }} />{l}</span>
+          <span key={k} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11 }}><span style={{ width: 12, height: 12, borderRadius: 4, background: MP_HEAT[k], border: `1px solid ${COLORS.panelBorder2}` }} />{l}</span>
         ))}
       </span>
       <InfoTip text="Each cell is compared with the previous period of the same length (same weekday last week for daily). Within ±2% is stable (grey), better is green, worse is red. Lost, damaged and compensation are better when they fall. A month-to-date row is never coloured against a full period." />
@@ -373,10 +400,10 @@ function MPHeatLegend() {
 }
 function MPTable({ columns, rows, mode = "seq", tol = 2, prevOf, onRowClick }) {
   return (
-    <div style={{ overflowX: "auto", border: `1px solid ${COLORS.panelBorder}`, borderRadius: 10, background: COLORS.panel }}>
+    <div className="tt-scroll-x" data-tt="scroll" style={{ ...UI.table }}>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
-        <thead><tr style={{ background: "#F5F6F9", borderBottom: `1px solid ${COLORS.panelBorder}` }}>
-          {columns.map((c) => <th key={c.key} style={{ textAlign: c.align || "left", padding: "8px 12px", fontWeight: 700, color: COLORS.textMuted, whiteSpace: "nowrap", fontSize: 11 }}>{c.label}</th>)}
+        <thead><tr style={{ background: COLORS.card, borderBottom: `1px solid ${COLORS.panelBorder}` }}>
+          {columns.map((c) => <th key={c.key} scope="col" style={{ textAlign: c.align || "left", padding: "10px 12px", fontWeight: 600, color: COLORS.textMuted, whiteSpace: "nowrap", fontSize: 11.5 }}>{c.label}</th>)}
         </tr></thead>
         <tbody>
           {rows.length === 0 ? (<tr><td colSpan={columns.length} style={{ padding: "16px 12px", textAlign: "center", color: COLORS.textFaint }}>No records</td></tr>) :
@@ -400,7 +427,8 @@ function mpRowMetrics(r) {
   const lm = r.ecomm_pickups || 0, ful = r.fulfillment_pickups || 0, box = r.box_pickups || 0, vol = lm + ful + box;
   const rev = r.delivery_revenue_total || 0, vas = r.delivery_revenue_vas_total || 0;
   const ship = r.delivery_revenue_shipping != null ? r.delivery_revenue_shipping : rev - vas;
-  return { vol, lm, ful, box, rev, vas, ship, aspS: vol ? ship / vol : null, aspV: vol ? vas / vol : null, dsr: mpPct100(r, "dsr"), asr: mpPct100(r, "asr"), lost: r.parcels_lost || 0, dam: r.parcels_damaged || 0, comp: r.compensation_amount || 0, active: r.active_merchants };
+  const dlv = r.parcels_delivered || 0;   // ASP = (shipping + VAS revenue) ÷ delivered parcels
+  return { vol, lm, ful, box, rev, vas, ship, dlv, asp: dlv ? rev / dlv : null, dsr: mpPct100(r, "dsr"), asr: mpPct100(r, "asr"), lost: r.parcels_lost || 0, dam: r.parcels_damaged || 0, fake: r.fake_attempts || 0, rto: r.rto_without_attempt || 0, comp: r.compensation_amount || 0, active: r.active_merchants };
 }
 function mpMetricTableRows(rows, labelFn) {
   return rows.map((r, i) => ({ label: labelFn(r, i), _date: r.date, ...mpRowMetrics(r), _highlight: r._highlight, _partial: r._partial }));
@@ -410,8 +438,7 @@ function mpTableCols() {
     { key: "label", label: "Period" },
     { key: "vol", label: "Volume", align: "right", mono: true, fmt: (v) => fmt(v), heat: "up" },
     { key: "rev", label: "Revenue", align: "right", mono: true, fmt: (v) => fmt(v), heat: "up" },
-    { key: "aspS", label: "ASP ship", align: "right", mono: true, fmt: (v) => fmt(v, 1), heat: "up" },
-    { key: "aspV", label: "ASP VAS", align: "right", mono: true, fmt: (v) => fmt(v, 2), heat: "up" },
+    { key: "asp", label: "ASP", align: "right", mono: true, fmt: (v) => fmt(v, 1), heat: "up" },
     { key: "dsr", label: "DSR", align: "right", mono: true, fmt: (v) => v.toFixed(1) + "%", heat: "up" },
     { key: "asr", label: "ASR", align: "right", mono: true, fmt: (v) => v.toFixed(1) + "%", heat: "up" },
     { key: "lost", label: "Lost", align: "right", mono: true, fmt: (v) => fmt(v), heat: "down" },

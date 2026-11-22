@@ -3,7 +3,7 @@
 Examples
   python scripts/render_sql.py sql/pull_issue_rows_current_month.sql --from 2026-10-01 --to 2026-10-05 --rn 0 700
   python scripts/render_sql.py sql/pull_daily_packs.sql --from 2026-09-01 --to 2026-10-04 --limit 1000 --offset 0
-  python scripts/render_sql.py sql/pull_sales_cohorts.sql --from 2026-10-01 --to 2026-10-05 --prev-from 2026-09-01 --prev-to 2026-10-01 --snapshot 2026-09-01
+  python scripts/render_sql.py sql/pull_sales_cohorts.sql --from 2026-10-01 --to 2026-10-05 --new-from 2026-09-25 --new-to 2026-10-25 --prev-from 2026-08-25 --prev-to 2026-09-25 --snapshot 2026-09-01
   python scripts/render_sql.py <template> ... -o out.sql
 
 The AM list and the sales list come from data/org_final.json (built from the targets workbook).
@@ -15,7 +15,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('template'); ap.add_argument('-o', '--out')
     ap.add_argument('--from', dest='frm', default='2026-10-01'); ap.add_argument('--to', default='2026-10-05')
-    ap.add_argument('--prev-from', default='2026-09-01'); ap.add_argument('--prev-to', default='2026-10-01'); ap.add_argument('--snapshot', default='2026-09-01')
+    ap.add_argument('--prev-from', default='2026-08-25'); ap.add_argument('--prev-to', default='2026-09-25'); ap.add_argument('--snapshot', default='2026-09-01')
+    ap.add_argument('--new-from', default='2026-09-25'); ap.add_argument('--new-to', default='2026-10-25')
     ap.add_argument('--owner-since', default='2026-06-01')
     ap.add_argument('--rn', nargs=2, type=int, default=[0, 700]); ap.add_argument('--limit', type=int, default=1000); ap.add_argument('--offset', type=int, default=0)
     a = ap.parse_args()
@@ -23,7 +24,7 @@ def main():
     q = lambda names: ','.join("'" + n.replace("'", "''") + "'" for n in names)
     sub = {'__AM_LIST__': q(x['name'] for x in org['ams']), '__SALES_LIST__': q(x['name'] for x in org['sales']),
            '__SALES_UNION__': ' UNION ALL '.join("SELECT '%s' n" % x['name'].replace("'", "''") for x in org['sales']),
-           '__OWNER_SINCE__': a.owner_since, '__FROM__': a.frm, '__TO__': a.to, '__PREV_FROM__': a.prev_from, '__PREV_TO__': a.prev_to, '__SNAPSHOT__': a.snapshot,
+           '__OWNER_SINCE__': a.owner_since, '__FROM__': a.frm, '__TO__': a.to, '__NEW_FROM__': a.new_from, '__NEW_TO__': a.new_to, '__PREV_FROM__': a.prev_from, '__PREV_TO__': a.prev_to, '__SNAPSHOT__': a.snapshot,
            '__RN_FROM__': str(a.rn[0]), '__RN_TO__': str(a.rn[1]), '__LIMIT__': str(a.limit), '__OFFSET__': str(a.offset)}
     text = open(a.template, encoding='utf-8').read()
     for k, v in sub.items(): text = text.replace(k, v)

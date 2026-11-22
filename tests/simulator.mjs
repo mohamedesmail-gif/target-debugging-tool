@@ -70,7 +70,7 @@ setInput(byTid('sim-new-plan'), Object.keys(store.pricing.plans).sort()[3]); awa
 check('VP: New merchant shows summary with GM2 and P&L, no peer card', txt().includes('GM2 %') && txt().includes('Profit and loss') && !/peer/i.test(txt()));
 
 // VP browsing the AM and sales levels must not see the simulator button
-for (const lvl of ['AMs', 'Sales']) { if (byTid('sim-back')) click(byTid('sim-back')); await sleep(300); click(btn(lvl)); await sleep(500); check('VP looking at the ' + lvl + ' view: no pricing simulator button', !byTid('sim-btn') && !!btn('Daily analysis →')); }
+for (const lvl of ['AMs', 'Sales']) { if (byTid('sim-back')) click(byTid('sim-back')); await sleep(300); click(btn(lvl)); await sleep(500); check('VP looking at the ' + lvl + ' view: no pricing simulator button', !byTid('sim-btn') && !!btn('Daily analysis')); }
 // VP opening the simulator from the team leaders view gets the team leader rules (no margin, no cost tab)
 if (byTid('sim-back')) click(byTid('sim-back')); await sleep(300); await as('vp'); await sleep(300); click(btn('Team leaders')); await sleep(600);
 click(byTid('sim-btn')); await waitFor(() => byTid('sim-search'), 60000);

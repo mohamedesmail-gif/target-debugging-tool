@@ -98,7 +98,7 @@ function PrcGm2Badge({ res }) {
   const col = tol === "g" ? COLORS.teal : tol === "y" ? COLORS.amber : COLORS.coral;
   const bg = tol === "g" ? COLORS.tealDim : tol === "y" ? COLORS.amberDim : COLORS.coralDim;
   return (
-    <div style={{ background: bg, border: `1px solid ${col}`, borderRadius: 8, padding: "10px 14px", fontSize: 12.5, lineHeight: 1.5 }}>
+    <div style={{ background: bg, border: `1px solid ${COLORS.panelBorder}`, borderRadius: THEME.radius.tile, padding: "12px 16px", fontSize: 13, lineHeight: 1.5 }}>
       <strong style={{ color: col }}>GM2 {pct(res.gm2pct, 1)}</strong> against an expected{" "}
       <strong>{pct(band[2], 1)}</strong> for merchants doing {PRC_ENG.gm2RangeLabel(band, true)} orders a month
       {" — "}{variance >= 0 ? "above" : (Math.abs(variance) * 100).toFixed(1) + " points below"} the benchmark.
@@ -118,8 +118,8 @@ function PricingCalculatorButton({ merchantId, canSeeMargin }) {
   if (!prcCanUse() || available === false) return null;
   return (
     <button onClick={() => PRC_OPEN_SIM && PRC_OPEN_SIM(merchantId)} disabled={available === null}
-      style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 600, color: "#fff", background: COLORS.blue, border: "none", borderRadius: 8, padding: "8px 14px", cursor: "pointer", opacity: available === null ? 0.6 : 1 }}>
-      Pricing calculator
+      style={{ ...UI.btnPrimary, opacity: available === null ? 0.6 : 1 }}>
+      <Calculator size={15} strokeWidth={1.75} aria-hidden="true" />Pricing calculator
     </button>
   );
 }
@@ -161,8 +161,8 @@ function PrcAspBridge({ cur, fin, finName }) {
   const grid = [];
   for (let t = y0; t <= y1 + 1e-9; t += step) grid.push(t);
   return (
-    <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.panelBorder}`, borderRadius: 12, padding: "12px 14px" }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: "0.05em" }}>ASP bridge, EGP per order</div>
+    <div style={{ ...UI.surface, padding: "12px 14px" }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: COLORS.textMuted }}>ASP bridge, EGP per order</div>
       <div style={{ fontSize: 11.5, color: COLORS.textFaint, margin: "2px 0 8px" }}>Current plan {"\u2192"} {finName}. Only revenue lines that change are shown.</div>
       {steps.length === 0 ? <div style={{ fontSize: 12.5, color: COLORS.textMuted, padding: "10px 0" }}>No revenue line changes per order.</div> : (
         <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="ASP bridge from the current plan to the new plan" style={{ fontFamily: "inherit" }}>
@@ -204,8 +204,8 @@ function PrcPerOrder({ cur, fin, finName }) {
   const td = { padding: "7px 14px", textAlign: "right", fontFamily: MP_MONO };
   const chg = (d) => (Math.abs(d) < 0.005 ? <span style={{ color: COLORS.textFaint }}>{"\u2014"}</span> : <span style={{ color: d > 0 ? COLORS.teal : COLORS.coral }}>{(d > 0 ? "+" : "\u2212") + fmt(Math.abs(d), 2)}</span>);
   return (
-    <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.panelBorder}`, borderRadius: 12, overflow: "hidden" }}>
-      <div style={{ padding: "10px 14px", fontSize: 12, fontWeight: 700, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: "0.05em", background: COLORS.slateDim }}>EGP per order</div>
+    <div style={{ ...UI.surface, overflow: "hidden" }}>
+      <div style={{ padding: "10px 14px", fontSize: 12, fontWeight: 700, color: COLORS.textMuted, background: COLORS.slateDim }}>EGP per order</div>
       <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead><tr style={{ fontSize: 11, color: COLORS.textFaint }}>
@@ -239,7 +239,7 @@ function PrcOrderMix({ base, periodLabel }) {
   const A = base.A, tot = A.orders;
   const by = (fn) => { const o = {}; base.rows.forEach((r) => { const k = fn(r); o[k] = (o[k] || 0) + r.n; }); return o; };
   const t = by((r) => r.t), pz = by((r) => r.p), sz = by((r) => r.z), dz = by((r) => r.s);
-  const pal = [COLORS.slate, COLORS.blue, COLORS.teal, COLORS.amber, COLORS.purple, COLORS.coral, "#2F7FA8", "#8A9A96", "#B0BDB9"];
+  const pal = [COLORS.icon, COLORS.navy, COLORS.tealFill, COLORS.amberFill, COLORS.purple, COLORS.coral, "#3F7FB0", COLORS.deco, COLORS.panelBorder2];
   const types = "SRECKPGF".split("").map((k) => ({ name: PRC_ENG.TYPE_NAME[k], n: t[k] || 0 }));
   if (t.O) types.push({ name: "Other", n: t.O });
   const sizes = PRC_ENG.SIZES.split("").map((k) => ({ name: PRC_ENG.SIZE_NAME[k], n: sz[k] || 0 }));
@@ -282,15 +282,15 @@ function PrcOrderMix({ base, periodLabel }) {
     );
   };
   return (
-    <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.panelBorder}`, borderRadius: 12, overflow: "hidden" }}>
+    <div style={{ ...UI.surface, overflow: "hidden" }}>
       <button onClick={() => setOpen(!open)} aria-expanded={open}
-        style={{ width: "100%", textAlign: "left", padding: "10px 14px", fontSize: 12, fontWeight: 700, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: "0.05em", background: COLORS.slateDim, border: "none", cursor: "pointer", display: "flex", justifyContent: "space-between" }}>
-        <span>{open ? "\u25BE" : "\u25B8"} Order mix, {periodLabel}</span>
+        style={{ width: "100%", textAlign: "left", padding: "12px 16px", fontSize: 13, fontWeight: 600, color: COLORS.text, background: COLORS.card, border: "none", cursor: "pointer", display: "flex", justifyContent: "space-between" }}>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>{open ? <ChevronDown size={14} strokeWidth={1.75} aria-hidden="true" /> : <ChevronRight size={14} strokeWidth={1.75} aria-hidden="true" />}Order mix, {periodLabel}</span>
         <span style={{ fontWeight: 500, textTransform: "none", letterSpacing: 0, color: COLORS.textFaint }}>{open ? "Click to hide" : "Click to show"}</span>
       </button>
       {open && (
         <div style={{ padding: "14px" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "18px 24px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 300px), 1fr))", gap: "18px 24px" }}>
             <Stack title="Order type" items={types} />
             <Stack title="Size" items={sizes} />
             <Stack title="Drop-off zone" items={zones(dz)} />
@@ -364,8 +364,8 @@ function MPPricingTab({ canSeeMargin }) {
   ];
 
   const Tbl = ({ title, rows, total, totalLabel }) => (
-    <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.panelBorder}`, borderRadius: 12, overflow: "hidden" }}>
-      <div style={{ padding: "10px 14px", fontSize: 12, fontWeight: 700, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: "0.05em", background: COLORS.slateDim }}>{title}</div>
+    <div style={{ ...UI.surface, overflow: "hidden" }}>
+      <div style={{ padding: "10px 14px", fontSize: 12, fontWeight: 700, color: COLORS.textMuted, background: COLORS.slateDim }}>{title}</div>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
         <thead>
           <tr style={{ fontSize: 11, color: COLORS.textFaint }}>
@@ -397,14 +397,14 @@ function MPPricingTab({ canSeeMargin }) {
       <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
         <label style={{ fontSize: 12, color: COLORS.textMuted }}>Month{" "}
           <select value={month} onChange={(e) => setMonth(e.target.value)}
-            style={{ padding: "6px 9px", fontSize: 13, borderRadius: 8, border: `1px solid ${COLORS.panelBorder2}`, background: COLORS.panel, color: COLORS.text }}>
+            style={{ ...UI.input }}>
             {store.months.map((m) => <option key={m} value={m}>{m}</option>)}
           </select>
         </label>
         <div style={{ fontSize: 12.5, color: COLORS.textMuted }}>Current plan <strong style={{ color: COLORS.text }}>{run.curPlan || "\u2014"}</strong></div>
         <label style={{ fontSize: 12, color: COLORS.textMuted }}>Compare with plan{" "}
           <select value={plan} onChange={(e) => setPlan(e.target.value)} aria-label="Compare with plan"
-            style={{ padding: "6px 9px", fontSize: 13, borderRadius: 8, border: `1px solid ${COLORS.panelBorder2}`, background: COLORS.panel, color: COLORS.text, maxWidth: 220 }}>
+            style={{ ...UI.input, maxWidth: 220 }}>
             <option value="">None</option>
             {prcPlanList(store, run.curPlan).filter((x) => x !== run.curPlan).map((x) => <option key={x} value={x}>{x}</option>)}
           </select>

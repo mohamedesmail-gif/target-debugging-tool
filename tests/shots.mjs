@@ -17,8 +17,8 @@ const signInVp = async () => { if (!Array.from(document.querySelectorAll('button
   click(Array.from(document.querySelectorAll('button')).find((b) => b.textContent.trim() === 'Continue with Google')); await sleep(80); const i = document.querySelector('input[aria-label="Bosta email"]'); Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(i, 'sameh.shaheen@bosta.co'); i.dispatchEvent(new window.Event('input', { bubbles: true })); click(Array.from(document.querySelectorAll('button')).find((b) => b.textContent.trim() === 'Continue')); await sleep(350); };
 await signInVp();
 const which = process.argv[2] || 'portfolio';
-if (which === 'portfolio') { click(btn('Portfolio overview →')); await waitFor(() => document.body.textContent.includes('Who drives')); }
-else { const b = Array.from(document.querySelectorAll('button[title="Open merchant profile"]')).find((x) => x.textContent === 'Trend Hub'); click(btn('Portfolio overview →') && b); await waitFor(() => document.body.textContent.includes('Overall overview')); }
+if (which === 'portfolio') { click(btn('Portfolio overview')); await waitFor(() => document.body.textContent.includes('Who drives')); }
+else { const b = Array.from(document.querySelectorAll('button[title="Open merchant profile"]')).find((x) => x.textContent === 'Trend Hub'); click(btn('Portfolio overview') && b); await waitFor(() => document.body.textContent.includes('Overall overview')); }
 await sleep(200);
 // each chart card: title + insight + its svg(s) -> one svg image per card (title/insight drawn as text above)
 const cards = Array.from(document.querySelectorAll('div')).filter((d) => d.querySelector(':scope > div > span') && d.querySelector('svg') && /border-radius: 12px/.test(d.getAttribute('style') || '') && /padding: 14px 16px 10px/.test(d.getAttribute('style') || ''));

@@ -11,17 +11,27 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from build_org import ams as ORG_AMS
 DATA = pathlib.Path(__file__).resolve().parents[1] / 'data'
 SEG_OF_TEAM = {'Growth - General Trade': 'Growth-General-Trade', 'Startups': 'Startups', 'Growth - Cosmatics': 'Growth-Cosmetics', 'Growth - Fashion': 'Growth-Fashion', 'Key': 'Key-Account'}
+def new_window(asof_d):
+    """New-merchant window of the reporting month M: from the 25th of M-1 up to (not including) the 25th of M.
+    Example: November -> 25 Oct to 24 Nov. Returns (previous window start, this window start, this window end)."""
+    def d25(y, m):
+        while m < 1: y, m = y - 1, m + 12
+        return datetime.date(y, m, 25)
+    y, m = asof_d.year, asof_d.month
+    return d25(y, m - 2), d25(y, m - 1), d25(y, m)
+
 MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep']
 
 def build(asof, elapsed, full, month, rows):
     asof_d = datetime.date.fromisoformat(asof); cur0 = asof_d.replace(day=1)
+    pw0, nw0, nw1 = new_window(asof_d)       # a merchant is NEW when its first pickup is in [nw0, nw1); last month's new = [pw0, nw0)
     prev0 = (cur0 - datetime.timedelta(days=1)).replace(day=1)
     by_am = {}
     for bid, name, am, seg, jd, la, mp, dp in rows:
         packs = [list(map(int, s.split(','))) for s in mp.split(';')]
         monthly = {k: packs[i][0] + packs[i][1] for i, k in enumerate(MONTHS)}
         mtd = packs[9][3]; jdd = datetime.date.fromisoformat(jd) if jd else None
-        by_am.setdefault(am, []).append(dict(id=bid, name=name, seg=seg, jd=jd, newThisMonth=bool(jdd and jdd >= cur0), newPrevMonth=bool(jdd and prev0 <= jdd < cur0),
+        by_am.setdefault(am, []).append(dict(id=bid, name=name, seg=seg, jd=jd, newThisMonth=bool(jdd and nw0 <= jdd < nw1), newPrevMonth=bool(jdd and pw0 <= jdd < nw0),
                                              daysSinceJoin=(asof_d - jdd).days if jdd else None, monthly=monthly, mtd=mtd, mtdAvgDaily=round(mtd / elapsed, 1),
                                              prevFull=monthly['sep'], lastActivity=la))
     n = asof_d.day                                                     # days of the month so far = days compared in the previous month
@@ -32,7 +42,7 @@ def build(asof, elapsed, full, month, rows):
         for m in ms:
             if not m['seg']: m['seg'] = SEG_OF_TEAM[a['team']]      # the pull has no segment for a few merchants: use the segment of the AM's team
         ams[a['name']] = dict(target=a['t']['pickups'], team=a['team'], base=len(ms), merchants=ms)
-    return dict(month=month, wdFull=full, wdElapsed=elapsed, asOf=asof, ptdDays=n, wdPtd=wd_ptd, ams=ams)
+    return dict(newFrom=str(nw0), newTo=str(nw1 - datetime.timedelta(days=1)), month=month, wdFull=full, wdElapsed=elapsed, asOf=asof, ptdDays=n, wdPtd=wd_ptd, ams=ams)
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()

@@ -10,7 +10,7 @@ function mpMetricFmt(metric) { return metric.isPct ? (v) => (mpOk(v) ? v.toFixed
 
 function MPSelect({ value, onChange, options }) {
   return (
-    <select value={value} onChange={(e) => onChange(e.target.value)} style={{ padding: "6px 10px", borderRadius: 8, border: `1px solid ${COLORS.panelBorder2}`, fontSize: 12.5, background: COLORS.panel, color: COLORS.text }}>
+    <select value={value} onChange={(e) => onChange(e.target.value)} style={{ padding: "8px 12px", borderRadius: 12, border: `1px solid ${COLORS.panelBorder2}`, fontSize: 12.5, background: COLORS.panel, color: COLORS.text }}>
       {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
     </select>
   );
@@ -24,7 +24,7 @@ function MPValueStrip({ items, metric }) {
   const curV = metric.getVal(items[0].row);
   return (
     <div style={{ marginBottom: 14 }}>
-      <div style={{ fontSize: 11, color: COLORS.textFaint, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 6, display: "flex", alignItems: "center" }}>
+      <div style={{ fontSize: 11.5, fontWeight: 500, color: COLORS.textMuted, marginBottom: 6, display: "flex", alignItems: "center" }}>
         {metric.label}: current and earlier same-length periods<InfoTip text="The first card is the current value. Every other card shows an earlier period of the same length, with how the current value compares to it." />
       </div>
       <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 4 }}>
@@ -32,7 +32,7 @@ function MPValueStrip({ items, metric }) {
           const v = metric.getVal(it.row);
           const d = i === 0 ? null : mpDeltaOf(curV, v, { rate: !!metric.isPct, good, label: "" });
           return (
-            <div key={i} style={{ minWidth: 128, flex: "0 0 auto", background: i === 0 ? "rgba(76,110,245,0.08)" : COLORS.panel, border: `1px solid ${i === 0 ? COLORS.blue : COLORS.panelBorder}`, borderRadius: 10, padding: "10px 12px" }}>
+            <div key={i} style={{ minWidth: 128, flex: "0 0 auto", background: i === 0 ? THEME.color.navyTint : COLORS.panel, border: `1px solid ${i === 0 ? COLORS.blue : COLORS.panelBorder}`, borderRadius: 10, padding: "10px 12px" }}>
               <div style={{ fontSize: 11, color: i === 0 ? COLORS.blue : COLORS.textFaint, fontWeight: 600, whiteSpace: "nowrap" }}>{it.label}{i === 0 ? " · current" : ""}</div>
               <div style={{ fontFamily: MP_MONO, fontSize: 17, fontWeight: 700, margin: "3px 0 5px" }}>{f(v)}</div>
               {d ? <MPDeltaChip d={{ text: d.text.replace(/ vs $/, ""), tone: d.tone }} /> : <span style={{ fontSize: 10.5, color: COLORS.textFaint }}>baseline</span>}
@@ -141,7 +141,7 @@ function MPComparison() {
       <MPPillRow tabs={subs} active={sub} onChange={setSub} />
       <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginBottom: 14 }}>
         <span style={{ fontSize: 12.5, color: COLORS.textMuted }}>Metric to compare:</span>
-        <select value={metricKey} onChange={(e) => setMetricKey(e.target.value)} style={{ padding: "6px 10px", borderRadius: 8, border: `2px solid ${COLORS.blue}`, fontSize: 12.5, fontWeight: 700, color: COLORS.blue, background: COLORS.panel }}>
+        <select value={metricKey} onChange={(e) => setMetricKey(e.target.value)} style={{ ...UI.input, borderColor: COLORS.navy, fontSize: 13, fontWeight: 600, color: COLORS.navy }}>
           {metrics.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
         </select>
         {controls}
@@ -154,8 +154,8 @@ function MPComparison() {
           <MPValueStrip items={items} metric={metric} />
           <MPChartCard title={metric.label} info={MP_CMP_INFO}>
             {chartData.length <= 8
-              ? <MPBarChart data={chartData} xKey="x" series={[{ key: "v", label: metric.label, color: COLORS.blue }]} fmtFn={f} />
-              : <MPLineChart data={chartData} xKey="x" series={[{ key: "v", label: metric.label, color: COLORS.blue }]} fmtFn={f} zeroBase={!metric.isPct} />}
+              ? <MPBarChart data={chartData} xKey="x" series={[{ key: "v", label: metric.label, color: COLORS.chart }]} fmtFn={f} />
+              : <MPLineChart data={chartData} xKey="x" series={[{ key: "v", label: metric.label, color: COLORS.chart }]} fmtFn={f} zeroBase={!metric.isPct} />}
           </MPChartCard>
           <MPSection title="All metrics, same-length periods" />
           <MPHeatLegend />

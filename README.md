@@ -2,7 +2,7 @@
 
 Sales performance tracker for Bosta, built as one React component:
 
-- **Leadership views**: VP & Heads (one screen, a tab per team: where the team stands against targets first, then base, activity and top / bottom 10 rankings), team leaders (with every AM and sales rep opening in place) and a permission model (VP all, head his team, team leader his AMs and sales, AM / sales their own view).
+- **Leadership views**: VP (company cards, then Totals and one tab per segment head), Heads (one tab per segment), team leaders. Every level shows Pickups, ASP and Retention cards first, then Activity analysis (month to date, clickable cards with the merchants behind them) and Top 10 / Bottom 10 rankings. Each head tab has Totals + team leader tabs; each team leader tab has a Team member drop-down. Permission model: VP all, head his team, team leader his AMs and sales, AM / sales their own view. New merchants are counted from the 25th of last month to the 25th of this month.
 - **AM Target Tracker**: pickups achievement, hit / missed merchants, merchant table with a Pickups view and an ASP view (portfolio ASP gap analysis with scenarios per merchant).
 - **AM portfolio overview**: merchant filter, same-length period comparisons, charts, issues (parcels, tickets, failed attempts), opportunities.
 
@@ -47,3 +47,13 @@ The app has no embedded data: `docs/DATA_SOURCES.md` lists every data point and 
 ## Also in this repo
 - `sql/data_points.sql`: one self-contained query per data point (section tags show which are mart tables and which are not).
 - `docs/org-chart/`: the commercial team structure (VP, heads, team leaders, AMs, sales) as SVG and PNG.
+
+## Live section (new)
+Every view starts with a Live block (parcels created and picked up today, from `fact.deliveries_live`), above the targets. Feed: `jobs/refresh_live.py` writes `live.json` every minute; the page reads it. Details and rules: `docs/LIVE.md`.
+
+## Latest changes (Oct 27)
+- Required daily average card removed everywhere; Achievement % column in the heads, team leaders, AMs and sales tables.
+- Main view: New merchants (MTD) in Base, New base ASP in Activity.
+- Top 10 / Bottom 10 dropdown: pickups MTD avg daily vs PMTD (GR %), ASP MTD vs PMTD (GR %), DSR, VAS.
+- AM merchant table: MTD vs PMTD avg daily, Delta, GR %, MTD vs PMTD total volume, Run rate, Status.
+- "Total eligible revenue" renamed "Total revenues". Sales view rebuilt on the AM layout.
