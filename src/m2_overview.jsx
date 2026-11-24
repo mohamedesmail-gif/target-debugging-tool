@@ -36,7 +36,7 @@ function MPDateRange({ range, setRange }) {
     setRange({ from, to });
   };
   const inp = { padding: "6px 9px", borderRadius: 12, border: `1px solid ${COLORS.panelBorder2}`, fontSize: 12.5, fontFamily: MP_MONO, background: COLORS.panel, color: COLORS.text };
-  const presets = [["YTD", MP_RANGE_MIN], ["Last 3 months", "2026-07-01"], ["Sep → Oct", "2026-09-01"]];
+  const presets = [["YTD", MP_RANGE_MIN], ["Last 3 months", MP_MONTH_KEYS[Math.max(0, MP_MONTH_KEYS.length - 4)] + "-01"], [MP_PREV_LABEL + " → " + MP_CUR_LABEL, MP_DAILY_START]];
   return (
     <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
       <span style={{ fontSize: 12, color: COLORS.textMuted }}>From</span>
@@ -220,7 +220,7 @@ function MPFlagChips({ monthIdx }) {
     <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 6 }}>
       <MPChip label="Segment" value={MP_MERCHANT.segment || "—"} info="Merchant segment as tagged in the mart." />
       <MPChip label="Lifecycle" value={flags.lifecycle} tone={flags.lifecycle === "Retained" ? "teal" : flags.lifecycle === "Reactivated" ? "purple" : "blue"}
-        info="New = joined in the selected month. Retained = active last month and this month. Reactivated = inactive last month, active before, active now. Active = any pickup in the month." />
+        info="New = joined in the selected month. Retained = active last month and this month. Reactivated = active in an earlier month, no pickup last month, pickups again now (calendar months here; the tracker views use 25th-to-25th months). Active = any pickup in the month." />
       <MPChip label="Account" value={sub.v} tone={sub.tone} info={subInfo} />
       <MPChip label="Seasonality" value="Coming soon" tag="soon" info="Seasonality tagging is coming soon." />
       <MPChip label="DSR status" value={(lowD ? "Low DSR" : "Healthy") + (dIdx !== monthIdx ? " (" + mpMonthLabel(dIdx) + ")" : "")} tone={lowD ? "coral" : "teal"} info={"Low DSR when the DSR of " + mpMonthLabel(dIdx) + " is 65% or below" + (dIdx !== monthIdx ? " (last complete month: DSR is not shown for a running month)." : ".")} />
@@ -242,7 +242,7 @@ function MPPortfolioBlocks({ monthIdx, onOpenMerchant }) {
   const top5 = rank.slice(0, 5).reduce((s, r) => s + r.value, 0);
   const share = total ? Math.round((top5 / total) * 100) : 0;
   const a = pf.analysis;
-  const mix = [{ label: "Grower", value: a.growerCount, color: COLORS.teal }, { label: "Dropper", value: a.dropperCount, color: COLORS.coral }, { label: "Stable", value: a.stableCount, color: COLORS.blue }, { label: "Churned", value: a.churnedCount, color: COLORS.slate }, { label: "New", value: a.newCount, color: COLORS.purple }];
+  const mix = [{ label: "Grower", value: a.growerCount, color: COLORS.teal }, { label: "Dropper", value: a.dropperCount, color: COLORS.coral }, { label: "Stable", value: a.stableCount, color: COLORS.blue }, { label: "Churned", value: a.churnedCount, color: COLORS.slate }, { label: "New", value: a.newCount, color: COLORS.purple }, { label: "Reactivation", value: a.reactivationCount || 0, color: COLORS.chart }];
   return (
     <>
       <MPSection title="Who drives this portfolio" />
@@ -250,7 +250,7 @@ function MPPortfolioBlocks({ monthIdx, onOpenMerchant }) {
         <MPChartCard title="Top merchants" info={"Top merchants by pickups in " + MP_MON3[Number(cur.month.slice(5)) - 1] + ". Click a name to open its profile."} insight={total ? { text: `Top 5 = ${share}% of ${mpCompact(total)} pickups`, tone: share >= 70 ? "bad" : "flat" } : null}>
           <MPRankBars data={rank.map((r) => ({ label: r.label, value: r.value, item: r.item }))} onItemClick={onOpenMerchant} fmtFn={(v) => mpCompact(v)} />
         </MPChartCard>
-        <MPChartCard title="Where merchants stand now" info="Current month, month-to-date. Growth compares each merchant's daily average so far with the same days of last month (GR %): +15% or more = Grower, -15% or less = Dropper, in between = Stable. Churned = no pickups yet this month; new = joined this month.">
+        <MPChartCard title="Where merchants stand now" info="Current month, month-to-date. Growth compares each merchant's daily average so far with the same days of last month (GR %): +15% or more = Grower, -15% or less = Dropper, in between = Stable. Churned = no pickups yet this month; new = first pickup from the 25th of last month, counted from that day; reactivation = active before, with no pickup in the previous 25th-to-25th month (the 25th of two months ago to the 24th of last month) and pickups again since the 25th of last month; their numbers count from the 25th of last month.">
           <MPRankBars data={mix} fmtFn={(v) => fmt(v)} />
         </MPChartCard>
       </MPGrid2>

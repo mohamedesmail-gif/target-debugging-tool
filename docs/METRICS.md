@@ -48,3 +48,8 @@ Fashion head fresh-sales target 27,600 vs 23,000 for the five listed Fashion sal
 ## ASP (all views)
 
 ASP = (shipping revenue + VAS revenue) ÷ delivered parcels. No view shows a shipping-only or VAS-only ASP any more. Portfolio ASP = sum of revenue ÷ sum of delivered parcels, never an average of merchant ASPs.
+
+
+## Merchant groups (AM, team leader, head and VP views)
+
+Growers / Droppers / Stable (GR % vs the same days of last month, ±15%), Churned (no pickup this month yet), New (first pickup from the 25th of last month to the 25th of this month; its pickups, delivered parcels, revenue, ASP and average per working day count from the 25th of last month, not from the 1st, and are part of every total) and Reactivations (on 25th-to-25th months: no pickup from the 25th of two months ago to the 24th of last month, pickups since the 25th of last month, active before that; counted from the 25th of last month like new merchants). Each merchant is in exactly one group; the groups add up to the portfolio.

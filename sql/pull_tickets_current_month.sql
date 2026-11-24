@@ -2,10 +2,8 @@
 -- Merchant link, first available: business_id, company_business_id, freshchat_business_id, then the parcel's merchant via tracking number.
 -- Ticket tracking numbers are text like '9622709071.0': strip the decimal before casting. About half of all tickets can be linked.
 -- Output: (mid, chunk, s, rn)  fields: id|day|status|agent|type|category|sub_category|tracking|compensation_type
-WITH latest AS (
-  SELECT business_id, account_manager, ROW_NUMBER() OVER (PARTITION BY business_id ORDER BY date DESC) rn
-  FROM mart.v_merchant_monthly_wide WHERE date >= DATE '__OWNER_SINCE__'),
-owner AS (SELECT business_id FROM latest WHERE rn=1 AND account_manager IN (__AM_LIST__)),
+WITH owner AS (SELECT business_id, account_manager_name AS account_manager FROM public.businesses   -- today's owner (public.businesses), AMs of the targets table
+  WHERE account_type = 'merchant' AND account_manager_name IN (__AM_LIST__)),
 tk AS (
   SELECT t.id, EXTRACT(day FROM t.created_date)::int AS dom, t.status, t.agent_name, t.ticket_type, t.category, t.sub_category, SPLIT_PART(t.tracking_number, '.', 1) AS tn, t.compensation_type,
          COALESCE(NULLIF(t.business_id,''), NULLIF(t.company_business_id,''), NULLIF(t.freshchat_business_id,''), p.merchant_id) AS mid

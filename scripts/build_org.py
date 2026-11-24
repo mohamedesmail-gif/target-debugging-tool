@@ -71,7 +71,37 @@ def apply_db_targets(rows):
         churn = g('Sales Manager', s['name'], 'churn')
         # Startups: the value is the churn target as it is. Growth / Key: the sheet column "Churn%" is read as retention (max churn = 1 - value), see docs/METRICS.md
         s['t'] = dict(newPickups=g('Sales Manager', s['name'], 'fresh pickups'), asp=g('Sales Manager', s['name'], 'ASP'), churn=churn if s['team'] == 'Startups' else (None if churn is None else round(1 - churn, 10)), churnSheet=churn)
-TARGETS_MONTH = os.environ.get('TARGETS_MONTH', '2026-10')   # which month of public.commercial_monthly_targets to use (YYYY-MM); the file is written by jobs/refresh_payload.py --month
+TARGETS_MONTH = os.environ.get('TARGETS_MONTH', '2026-10')
+# ---- who reports to whom in the month: data/commercial_monthly_targets_hierarchy_YYYY-MM.json ([role, name, manager, team]) when it exists.
+# It replaces the sheet's AM / sales lists and their team leader / head; people missing from the sheet are added (no email, team weights);
+# people not in the month's list are dropped. Heads and team leaders keep the sheet's ids.
+_H = DATA / ('commercial_monthly_targets_hierarchy_%s.json' % TARGETS_MONTH)
+TEAM_OF = {'Growth Cosmetics': 'Growth - Cosmatics', 'Growth Fashion': 'Growth - Fashion', 'Growth General Trade': 'Growth - General Trade', 'Key Accounts': 'Key', 'Startups': 'Startups'}
+if _H.exists():
+    _h = json.load(open(_H, encoding='utf-8'))
+    _tl_id = {t['name']: t['id'] for t in tls}; _tl_head = {t['name']: t['headId'] for t in tls}; _head_id = {x['name']: x['id'] for x in heads}
+    for role, name, mgr, team in _h:
+        if role == 'Team Leader' and name in _tl_id and mgr in _head_id:
+            t = [x for x in tls if x['name'] == name][0]; t['headId'] = _head_id[mgr]; _tl_head[name] = _head_id[mgr]
+    def _place(mgr):   # (team leader id, head id) of a manager name: a team leader, or a head directly
+        if mgr in _tl_id: return _tl_id[mgr], _tl_head[mgr]
+        if mgr in _head_id: return None, _head_id[mgr]
+        raise SystemExit('hierarchy: unknown manager ' + repr(mgr))
+    _old_am = {a['name']: a for a in ams}; _new_am = []
+    for role, name, mgr, team in _h:
+        if role != 'Account Manager': continue
+        tl_, hd_ = _place(mgr); tm = TEAM_OF[team]; st = tm == 'Startups'
+        a = dict(_old_am.get(name) or dict(name=name, email=None, t=dict(pickups=None, asp=None, retention=None), w=(0.7, 0.3, 0) if st else (0.6, 0.2, 0.2)))
+        a.update(team=tm, tlId=tl_, headId=hd_); _new_am.append(a)
+    _old_s = {x['name']: x for x in sales}; _new_s = []
+    for role, name, mgr, team in _h:
+        if role != 'Sales Manager': continue
+        tl_, hd_ = _place(mgr); tm = TEAM_OF[team]
+        x = dict(_old_s.get(name) or dict(name=name, hr=None, email=None, t=dict(newPickups=None, asp=None, churn=None), w=list(([x2 for x2 in sales if x2['team'] == tm] or sales)[0]['w'])))
+        x.update(team=tm, tlId=tl_, headId=hd_); _new_s.append(x)
+    for i, x in enumerate(_new_s): x['id'] = 's%d' % (i + 1)
+    ams[:] = _new_am; sales[:] = _new_s
+    HIERARCHY_FROM = str(_H.name)   # which month of public.commercial_monthly_targets to use (YYYY-MM); the file is written by jobs/refresh_payload.py --month
 _DB_T = DATA / ('commercial_monthly_targets_db.json' if TARGETS_MONTH == '2026-10' else 'commercial_monthly_targets_db_%s.json' % TARGETS_MONTH)
 if _DB_T.exists() and os.environ.get('TARGETS_SOURCE', 'db') == 'db':
     _sheet_t = {id(p): dict(p['t']) for p in heads + tls + ams + sales}

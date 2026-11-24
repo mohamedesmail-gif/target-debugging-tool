@@ -16,3 +16,4 @@ tests/out/
 *.zip
 *.bundle
 .DS_Store
+tests/.smoke_run.mjs

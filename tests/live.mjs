@@ -27,7 +27,7 @@ const t = () => (document.querySelector('[data-testid="live-section"]') || { tex
 let pass = 0, fail = 0; const check = (n, ok, x) => { ok ? pass++ : fail++; console.log((ok ? 'PASS ' : 'FAIL ') + n + (x ? '  -> ' + x : '')); };
 const clock = () => (document.querySelector('[data-testid="live-clock"]') || { textContent: '' }).textContent;
 if (mode === 'fresh') {
-  const ids = Object.values(PAYLOAD.data.ams).flatMap((a) => a.merchants.map((m) => m.id)); const M = new Map(SNAP.rows.map((r) => [r[0], r]));
+  const ids = /* the VP view: AM portfolios + Box / no-segment merchants + sales reps' merchants in no AM portfolio */ [...new Set(Object.values(PAYLOAD.data.ams).concat(Object.values(PAYLOAD.data.vpExtra || {}), PAYLOAD.data.salesExtra ? [PAYLOAD.data.salesExtra] : []).flatMap((a) => a.merchants.map((m) => m.id)))]; const M = new Map(SNAP.rows.map((r) => [r[0], r]));
   const cT = ids.reduce((a, id) => a + (M.has(id) ? M.get(id)[1] : 0), 0), cB = ids.reduce((a, id) => a + (M.has(id) ? M.get(id)[3] * 2 + 2 : 0), 0) / 2;
   check('feed read over fetch', fetched >= 1);
   check('fresh feed: the line starts with "Live ·" and no age', /^Live · Today \d\d:\d\d$/.test(clock()), clock());

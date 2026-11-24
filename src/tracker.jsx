@@ -59,16 +59,32 @@ const UI = {
   kpi: { fontSize: 24, fontWeight: 700, lineHeight: 1.1, letterSpacing: "-0.015em" },
 };
 
+// status filter of the merchant detail tables (AM and sales views): the merchant groups of the cards
+const STATUS_FILTERS = [["all", "All statuses"], ["Grower", "Growers"], ["Dropper", "Droppers"], ["Stable", "Stable"], ["Churned", "Churned"], ["New", "New"], ["Reactivation", "Reactivations"]];
+function StatusFilter({ value, onChange, rows }) {
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)} aria-label="Filter by status" style={{ ...UI.input, minWidth: 150, cursor: "pointer" }}>
+      {STATUS_FILTERS.map(([k, l]) => <option key={k} value={k}>{l}{rows ? " (" + (k === "all" ? rows.length : rows.filter((r) => r.standing === k).length) + ")" : ""}</option>)}
+    </select>
+  );
+}
+
 function fmt(n, digits = 0) {
   if (n === null || n === undefined || Number.isNaN(n)) return "\u2014";
   return n.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
 
-const MONTH_LABELS = { jan: "January", feb: "February", mar: "March", apr: "April", may: "May", jun: "June", jul: "July", aug: "August", sep: "September", oct: "October" };
+const MONTH_KEYS_ALL = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+const MONTH_NAMES_FULL = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const MONTH_LABELS = Object.fromEntries(MONTH_KEYS_ALL.map((k, i) => [k, MONTH_NAMES_FULL[i]]));
 // Working days (excl. Fridays) in each 2026 calendar month, used to convert a month's total into an avg daily figure
-const WD_BY_MONTH = { jan: 26, feb: 24, mar: 27, apr: 26, may: 26, jun: 26, jul: 26, aug: 27, sep: 26, oct: 26 };
-const HIST_MONTH_KEYS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep"];
-const HIST_MONTH_ORDER = ["2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06", "2026-07", "2026-08", "2026-09"];
+const WD_BY_MONTH = { jan: 26, feb: 24, mar: 27, apr: 26, may: 26, jun: 26, jul: 26, aug: 27, sep: 26, oct: 26, nov: 26, dec: 27 };
+// complete months of the data (January .. last month) and the current month, from the payload (scripts/build_tracker_data.py)
+const CUR_MONTH_IDX = parseInt(DATA.asOf.slice(5, 7), 10) - 1;
+const HIST_MONTH_KEYS = DATA.monthKeys || MONTH_KEYS_ALL.slice(0, CUR_MONTH_IDX);
+const HIST_MONTH_ORDER = HIST_MONTH_KEYS.map((k) => DATA.asOf.slice(0, 4) + "-" + String(MONTH_KEYS_ALL.indexOf(k) + 1).padStart(2, "0"));
+const PREV_KEY = HIST_MONTH_KEYS[HIST_MONTH_KEYS.length - 1];          // last month
+const CUR_MONTH_NAME = MONTH_NAMES_FULL[CUR_MONTH_IDX], PREV_MONTH_NAME = MONTH_LABELS[PREV_KEY];
 
 const AM_NAMES = Object.keys(DATA.ams).sort((a, b) => DATA.ams[b].target - DATA.ams[a].target);
 
@@ -89,15 +105,14 @@ function analyzeAm(amData, workingDays) {
 
     // Target avg daily (per merchant) = (previous month achievement, ecomm+fulfillment only, x growth) / working days
     const merchants = amData.merchants.map((m) => {
-      const hasAug = m.monthly.sep > 0; // has a previous-month (September) baseline
-      const activeBeforeAug = m.monthly.jul > 0 || m.monthly.aug > 0;
+      const hasAug = m.monthly[PREV_KEY] > 0; // has a previous-month baseline
       let category;
       if (m.newThisMonth) {
         category = "New";
+      } else if (m.reactivated) {   // 25th-to-25th months: no pickup in the previous window, pickups since the 25th of last month (scripts/build_tracker_data.py)
+        category = "Reactivation";
       } else if (m.mtdAvgDaily <= 0) {
         category = "Churned";
-      } else if ((m.prevFull || 0) <= 0 && activeBeforeAug) {
-        category = "Reactivation";
       } else {
         category = "Existing";
       }
@@ -106,7 +121,7 @@ function analyzeAm(amData, workingDays) {
       // against, so target / delta / achievement% / below-own-target are all left undefined
       // rather than calculated against a fabricated or zero target.
       const hasTarget = category !== "New" && category !== "Churned";
-      const merchantTarget = hasTarget ? (m.monthly.sep * (1 + GROWTH_PCT / 100)) / days : null;
+      const merchantTarget = hasTarget ? (m.monthly[PREV_KEY] * (1 + GROWTH_PCT / 100)) / days : null;
       const deviation = hasTarget ? m.mtdAvgDaily - merchantTarget : null;
       const contribution = hasTarget && merchantTarget ? m.mtdAvgDaily / merchantTarget : null;
       const gapContributionPct = hasTarget && merchantTarget
@@ -131,7 +146,7 @@ function analyzeAm(amData, workingDays) {
       const runRate = m.mtd + m.mtdAvgDaily * remainingDays;
       // GR % decides the status: +15% or more = Grower, -15% or less = Dropper, in between = Stable. "standing" also holds New and Churned, so the five groups add up to the portfolio.
       const growthStatusG = momPct == null ? null : momPct >= GROWTH_THRESHOLD_PCT ? "Grower" : momPct <= -GROWTH_THRESHOLD_PCT ? "Dropper" : "Stable";
-      const standing = category === "New" ? "New" : category === "Churned" ? "Churned" : growthStatusG || "Grower";
+      const standing = category === "New" ? "New" : category === "Churned" ? "Churned" : category === "Reactivation" ? "Reactivation" : growthStatusG || "Grower";   // the six groups add up to the portfolio
       return {
         ...m,
         merchantTarget, hasAug, hasTarget, deviation, contribution, category, missedTarget,
@@ -172,6 +187,7 @@ function analyzeAm(amData, workingDays) {
     const stableCount = merchants.filter((m) => m.standing === "Stable").length;
     const churnedCount = churnedStats.count;
     const newCount = newStats.count;
+    const reactivationCount = reactivationStats.count;
 
     // Breakdown of the gap to the 80% achievement threshold, by merchant (no portfolio-wide total — see note under table)
     // Progress toward Target (Target = 80% of the monthly target): 100% means Target reached
@@ -186,7 +202,7 @@ function analyzeAm(amData, workingDays) {
       days, target, base, avgDailyTarget, thresholdDailyTarget: thresholdTotal,
       merchants, totalActualMtdDaily, totalActualMtdPickups, achievementPct, targetProgressPct, remainingDaily,
       elapsedDays, remainingDays, estimatedTotal, estimatedPct, bottomUpDailyTarget,
-      existingStats, newStats, reactivationStats, churnedStats, growerCount, dropperCount, stableCount, churnedCount, newCount,
+      existingStats, newStats, reactivationStats, churnedStats, growerCount, dropperCount, stableCount, churnedCount, newCount, reactivationCount,
       gapToThresholdPct, gapToThresholdAbs, missedBreakdown,
     };
 }
@@ -198,6 +214,7 @@ export default function TargetTracker({ session: hostSession, onSignOut } = {}) 
   const [sortDir, setSortDir] = useState("desc");
   const [expandedId, setExpandedId] = useState(null);
   const [fid, setFid] = useState(""); const [fname, setFname] = useState(""); // business ID / business name search of the merchant table
+  const [stF, setStF] = useState("all"); // status filter of the merchant table (one of STATUS_FILTERS)
   const [cmpView, setCmpView] = useState("prev"); // pickups table: "prev" = against last month (PMTD), "target" = against each merchant's own target
   const [screen, setScreen] = useState("tracker"); // "tracker" | "profile" — in-app navigation, no separate tab/page
   const [selectedMerchant, setSelectedMerchant] = useState(null);
@@ -229,7 +246,7 @@ export default function TargetTracker({ session: hostSession, onSignOut } = {}) 
     return arr;
   }, [analysis.merchants, sortKey, sortDir]);
 
-  const sortedMerchants = sortedAll.filter((m) => (!fid.trim() || String(m.id).toLowerCase().includes(fid.trim().toLowerCase())) && (!fname.trim() || String(m.name).toLowerCase().includes(fname.trim().toLowerCase())));
+  const sortedMerchants = sortedAll.filter((m) => (stF === "all" || m.standing === stF) && (!fid.trim() || String(m.id).toLowerCase().includes(fid.trim().toLowerCase())) && (!fname.trim() || String(m.name).toLowerCase().includes(fname.trim().toLowerCase())));
   const onSort = (key) => {
     if (sortKey === key) setSortDir(sortDir === "asc" ? "desc" : "asc");
     else { setSortKey(key); setSortDir("desc"); }
@@ -276,13 +293,14 @@ export default function TargetTracker({ session: hostSession, onSignOut } = {}) 
         </div>
 
         {/* Growers / droppers / stable by GR % */}
-        <SectionLabel>Merchants &middot; growers, droppers, stable, churned, new (adds up to {amData.base})</SectionLabel>
+        <SectionLabel>Merchants &middot; growers, droppers, stable, churned, new, reactivations (adds up to {amData.base})</SectionLabel>
         <div className="tt-kpis" style={{ ...UI.card, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 160px), 1fr))", gap: 12, marginBottom: 22 }}>
           <StatCard label="Growers" value={analysis.growerCount} sub={`${fmt((analysis.growerCount / (analysis.base || 1)) * 100, 0)}% of merchants \u00b7 GR +15% or more`} accent={COLORS.teal} />
           <StatCard label="Droppers" value={analysis.dropperCount} sub={`${fmt((analysis.dropperCount / (analysis.base || 1)) * 100, 0)}% of merchants \u00b7 GR -15% or less`} accent={COLORS.coral} />
           <StatCard label="Stable" value={analysis.stableCount} sub={`${fmt((analysis.stableCount / (analysis.base || 1)) * 100, 0)}% of merchants \u00b7 GR between -15% and +15%`} accent={COLORS.blue} />
           <StatCard label="Churned" value={analysis.churnedCount} sub={`${fmt((analysis.churnedCount / (analysis.base || 1)) * 100, 0)}% of merchants \u00b7 no pickups this month yet`} accent={COLORS.slate} />
-          <StatCard label="New" value={analysis.newCount} sub={`${fmt((analysis.newCount / (analysis.base || 1)) * 100, 0)}% of merchants \u00b7 joined this month`} accent={COLORS.purple} />
+          <StatCard label="New" value={analysis.newCount} sub={`${fmt((analysis.newCount / (analysis.base || 1)) * 100, 0)}% of merchants \u00b7 first pickup since the 25th`} accent={COLORS.purple} />
+          <StatCard label="Reactivations" value={analysis.reactivationCount} sub={`${fmt((analysis.reactivationCount / (analysis.base || 1)) * 100, 0)}% of merchants \u00b7 back since the 25th`} accent={COLORS.chart} />
         </div>
 
         {/* Gap to Target summary */}
@@ -411,7 +429,7 @@ const KPI_ICON_RULES = [
   [/churn rate|churned|churn/i, UserMinus, "neg"], [/retention/i, Repeat, "pos"],
   [/absent/i, BellOff, "neg"], [/dropper/i, TrendingDown, "neg"], [/grower|growing/i, TrendingUp, "pos"], [/on risk|at risk/i, Flame, "warn"],
   [/quiet today/i, Hourglass, "warn"], [/net impact/i, Scale, "navy"],
-  [/^stable/i, Minus, "neutral"], [/^new\b|new accounts|new merchants|newcomer/i, UserPlus, "violet"], [/active merchants/i, Users, "navy"], [/total portfolio|portfolio size/i, Briefcase, "navy"],
+  [/^stable/i, Minus, "neutral"], [/reactivat/i, RefreshCw, "teal"], [/^new\b|new accounts|new merchants|newcomer/i, UserPlus, "violet"], [/active merchants/i, Users, "navy"], [/total portfolio|portfolio size/i, Briefcase, "navy"],
   [/fresh sales|new pickups|new-pickups/i, PackagePlus, "violet"], [/target daily/i, CalendarDays, "navy"], [/pickups target|achievement|target/i, Target, "navy"],
   [/lost/i, PackageX, "neg"], [/pickups|volume|parcels|orders/i, Package, "navy"],
   [/asp gap|net asp/i, Scale, "warn"], [/asp/i, Coins, "navy"], [/revenue/i, Banknote, "pos"], [/gm2|margin/i, PieChart, "pos"], [/wallet/i, Wallet, "navy"], [/vas/i, Sparkles, "violet"],
@@ -489,8 +507,8 @@ function buildInsight(m, weight) {
 
   const joinMonth = m.jd ? m.jd.slice(0, 7) : null;
   // Recent-quarter window used for the "active X of Y months" / consistency messaging
-  const monthOrder = ["2026-07", "2026-08", "2026-09"];
-  const monthKeys = ["jul", "aug", "sep"];
+  const monthOrder = HIST_MONTH_ORDER.slice(-3);
+  const monthKeys = HIST_MONTH_KEYS.slice(-3);
   const applicableIdx = monthOrder.map((mo, i) => (joinMonth === null || joinMonth <= mo ? i : -1)).filter((i) => i >= 0);
 
   const applicableLabels = applicableIdx.map((i) => MONTH_LABELS[monthKeys[i]]);
@@ -504,13 +522,13 @@ function buildInsight(m, weight) {
       const monthAvgDaily = m.monthly[monthKeys[i]] / WD_BY_MONTH[monthKeys[i]];
       if (monthAvgDaily >= weight) achievedLabels.push(MONTH_LABELS[monthKeys[i]]);
     });
-    if (m.mtdAvgDaily >= weight) achievedLabels.push("October (MTD)");
+    if (m.mtdAvgDaily >= weight) achievedLabels.push(CUR_MONTH_NAME + " (MTD)");
   }
 
   // Highest avg daily volume EVER reached (full available history, Jan-Sep + current MTD), and which month
   const histApplicable = HIST_MONTH_KEYS.filter((k, i) => joinMonth === null || joinMonth <= HIST_MONTH_ORDER[i]);
   const histPoints = histApplicable.map((k) => ({ label: MONTH_LABELS[k], value: m.monthly[k] / WD_BY_MONTH[k] }));
-  histPoints.push({ label: "October (MTD)", value: m.mtdAvgDaily });
+  histPoints.push({ label: CUR_MONTH_NAME + " (MTD)", value: m.mtdAvgDaily });
   const best = histPoints.reduce((a, b) => (b.value > a.value ? b : a), histPoints[0]);
 
   // Lost volume (churned only): avg monthly pickup TOTAL across active (non-zero) months in full history before going quiet
@@ -561,7 +579,7 @@ function MerchantDrilldown({ merchant, weight, onOpenProfile }) {
       )}
       {insight.newThisMonth ? (
         <div>
-          <strong style={{ color: COLORS.purple }}>New this month.</strong> No prior history to compare yet.
+          <strong style={{ color: COLORS.purple }}>New merchant</strong> (first pickup {merchant.jd || "\u2014"}). Measured from the 25th of last month: {fmt(merchant.mtd)} pickups{merchant.preNew ? ` (${fmt(merchant.preNew)} of them before the 1st)` : ""}, {fmt(merchant.mtdAvgDaily, 1)} per working day over {merchant.wdMeasured || DATA.wdElapsed} working days. No earlier history to compare yet.
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>

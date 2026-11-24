@@ -11,18 +11,22 @@ A = json.load(open(DATA / 'merchant_asp.json')); DSR = json.load(open(DATA / 'me
 PTD = json.load(open(DATA / 'ptd_sep1_4.json')); TD = json.load(open(DATA / 'td_oct1_4.json'))
 import datetime
 FULL, ELAPSED, FACTOR = D['wdFull'], D['wdElapsed'], 1.0      # achievement is measured against the monthly target of the sheet
-WDPTD = sum(1 for i in range(D['ptdDays']) if datetime.date(2026, 9, 1 + i).weekday() != 4)   # working days (no Fridays) of Sep 1..N
+_p0 = (datetime.date.fromisoformat(D['asOf']).replace(day=1) - datetime.timedelta(days=1)).replace(day=1)
+WDPTD = sum(1 for i in range(D['ptdDays']) if (_p0 + datetime.timedelta(days=i)).weekday() != 4)   # working days (no Fridays) of the same days last month
+PREVK = D['monthKeys'][-1]
 heads = {h['id']: h for h in O['heads']}; tls = {t['id']: t for t in O['tls']}
 
-rows = {}                               # business id -> row, plus the AM it belongs to
-for a in O['ams']:
-    for m in D['ams'][a['name']]['merchants']:
+rows = {}                               # business id -> row, plus the AM it belongs to (VP-only merchants: am '__vp__', in the VP scope only)
+_groups = [(a, D['ams'][a['name']]['merchants']) for a in O['ams']] + [(dict(name='__vp__', team=None, tlId=None, headId=None), g['merchants']) for g in (D.get('vpExtra') or {}).values()]
+_groups += [(dict(name='__sales__', team=None, tlId=None, headId=None), (D.get('salesExtra') or {}).get('merchants', []))]   # sales reps' merchants in no AM portfolio
+for a, _ms in _groups:
+    for m in _ms:
         mon = m['monthly']; mavg = m['mtdAvgDaily']
         if m['newThisMonth']: cat = 'New'
+        elif m.get('reactivated'): cat = 'Reactivation'     # pickups since the 25th by definition, so never churned
         elif mavg <= 0: cat = 'Churned'
-        elif (m['prevFull'] or 0) <= 0 and (mon['jul'] > 0 or mon['aug'] > 0): cat = 'Reactivation'
         else: cat = 'Existing'
-        has = cat not in ('New', 'Churned'); tgt = mon['sep'] * 1.6 / FULL if has else None
+        has = cat not in ('New', 'Churned'); tgt = mon[PREVK] * 1.6 / FULL if has else None
         rev, vas, dl = A[m['id']][0], A[m['id']][1], A[m['id']][2]
         rows[m['id']] = dict(id=m['id'], name=m['name'], am=a['name'], team=a['team'], tl=a['tlId'], head=a['headId'], mtd=m['mtd'], avg=mavg, cat=cat, has=has, tgt=tgt,
                              dev=(mavg - tgt) if has else None, missed=(mavg < tgt) if has else False, ach=(mavg / tgt) if has and tgt else None,
@@ -32,14 +36,19 @@ for a in O['ams']:
 
 def top(lst, key, desc=True, n=10):
     return sorted(lst, key=lambda r: ((-key(r)) if desc else key(r), r['id']))[:n]
-def agg(ams, sales, label, target_asp, target_pick):
+def agg(ams, sales, label, target_asp, target_pick, vp=False):
     names = {a['name'] for a in ams}; rs = [r for r in rows.values() if r['am'] in names]
-    pick = sum(r['mtd'] for r in rs); goal = target_pick * FACTOR
+    pick = sum(r['mtd'] for r in rs); goal = target_pick * FACTOR        # against the target: the AM portfolios only
+    seen = {r['id'] for r in rs}
+    for s_ in sales:                                                   # the merchants of the scope's sales reps (new, last month's new, reactivations) count too
+        for x in s_['newList'] + s_['cohortList'] + s_.get('reactList', []):
+            if x[0] in rows and x[0] not in seen: rs.append(rows[x[0]]); seen.add(x[0])
+    if vp: rs = rs + [r for r in rows.values() if r['am'] in ('__vp__', '__sales__') and r['id'] not in seen]  # the VP also holds the VP-only merchants and every sales merchant
     avg = pick / ELAPSED; rem = FULL - ELAPSED; proj = pick + avg * rem
     status = 'Achieved' if pick >= goal else 'On track' if proj >= goal else 'At risk' if proj >= 0.9 * goal else 'Behind'
     rb = sum(a['a']['retBase'] for a in ams); rk = sum(a['a']['retKept'] for a in ams)
     num = sum(a['a']['aspNum'] for a in ams); den = sum(a['a']['aspDen'] for a in ams)
-    fresh = sum(s['a']['newPicked'] for s in sales); roster = {x for x in rows}
+    fresh = sum(s['a']['newPicked'] for s in sales); roster = {x for x, r in rows.items() if r['am'] not in ('__vp__', '__sales__')}
     outside = sum(x[3] for s in sales for x in s['newList'] if x[0] not in roster)
     T = target_asp; elig = [r for r in rs if r['dl'] > 0]; DL = sum(r['dl'] for r in elig)
     for r in elig: r['share'] = r['dl'] / DL; r['gapc'] = r['share'] * (r['asp'] - T) if T is not None else None
@@ -58,7 +67,7 @@ def agg(ams, sales, label, target_asp, target_pick):
     coh = [dict(id=x[0], name=x[1], oct=x[3], sep=x[6]) for s in sales for x in s['cohortList']]
     frs = [dict(id=x[0], name=x[1], picked=x[3]) for s in sales for x in s['newList']]
     out = dict(label=label, target=target_pick, goal=goal, pickups=pick, avgDaily=avg, projected=proj, short=max(0, goal - pick), status=status, achv=pick / goal, projVsGoal=proj / goal, projPctMonthly=proj / target_pick,
-               portfolio=len(rs), active=sum(1 for r in rs if r['mtd'] > 0), retBase=rb, retKept=rk, churned=rb - rk, retention=rk / rb, churnRate=(rb - rk) / rb,
+               portfolio=len(rs), active=sum(1 for r in rs if r['mtd'] > 0), mtdAll=sum(r['mtd'] for r in rs), retBase=rb, retKept=rk, churned=rb - rk, retention=rk / rb, churnRate=(rb - rk) / rb,
                asp=num / den, aspTarget=T, fresh=fresh, freshOutside=outside, contribution=fresh / (pick + outside),
                nHit=sum(1 for r in targeted if not r['missed']), nMissed=sum(1 for r in targeted if r['missed']), nLowDsr=len(low), lowShare=sum(r['sep'] for r in low) / sum(r['sep'] for r in withd),
                topPick=names_(top(rs, lambda r: r['mtd'])), botPick=names_(top([r for r in rs if r['mtd'] > 0], lambda r: r['mtd'], False)),
@@ -82,7 +91,7 @@ def agg(ams, sales, label, target_asp, target_pick):
 
 E = {}
 allams, allsales = O['ams'], O['sales']
-E['all'] = agg(allams, allsales, 'All', sum(a['t']['asp'] * a['t']['pickups'] for a in allams) / sum(a['t']['pickups'] for a in allams), sum(a['t']['pickups'] for a in allams))
+E['all'] = agg(allams, allsales, 'All', sum(a['t']['asp'] * a['t']['pickups'] for a in allams) / sum(a['t']['pickups'] for a in allams), sum(a['t']['pickups'] for a in allams), vp=True)
 for team in ('Key', 'Startups', 'Growth - Fashion'):
     h = [x for x in O['heads'] if x['team'] == team][0]
     E[team] = agg([a for a in allams if a['headId'] == h['id']], [s for s in allsales if s['headId'] == h['id']], team, h['t']['asp'], h['t']['pickups'])

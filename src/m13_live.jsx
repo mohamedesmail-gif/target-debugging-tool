@@ -50,13 +50,13 @@ function liveAgeMin(asOf) {
 const liveAgeText = (min) => (min == null ? "" : min < 60 ? min + " min ago" : min < 1440 ? Math.floor(min / 60) + " h ago" : Math.floor(min / 1440) + " d ago");
 // which merchants a view adds up: the roster merchants of the AM / team / head / VP, or the new + last-month merchants of a sales rep
 function liveScopeIds(kind, ent) {
-  if (kind === "sales") return new Set((ent.newList || []).concat(ent.cohortList || []).map((x) => x[0]));
+  if (kind === "sales") return new Set((ent.newList || []).concat(ent.cohortList || [], ent.reactList || []).map((x) => x[0]));
   return new Set(leadScope(kind, ent).rows.map((r) => r.id));
 }
 const LIVE_NAME = (() => {
   const m = new Map();
   LEAD_ROWS.forEach((r) => m.set(r.id, { name: r.name, seg: r.seg, am: r.amName }));
-  ORG.sales.forEach((x) => (x.newList || []).concat(x.cohortList || []).forEach((l) => { if (!m.has(l[0])) m.set(l[0], { name: l[1], seg: null, am: null }); }));
+  ORG.sales.forEach((x) => (x.newList || []).concat(x.cohortList || [], x.reactList || []).forEach((l) => { if (!m.has(l[0])) m.set(l[0], { name: l[1], seg: null, am: null }); }));
   return m;
 })();
 function liveSum(idx, ids) {
@@ -188,7 +188,7 @@ function LiveSection({ kind, ent }) {
         {open && <LiveMerchants key={open + day} title={(open === "created" ? "Created " : "Picked up ") + when + " by merchant"} by={S.by} col={col(open)} ci={ci} />}
       </div>
       <div style={{ fontSize: 11.5, color: COLORS.textFaint, marginTop: 8, lineHeight: 1.5 }}>
-        {kind === "sales" ? "Merchants of this sales rep (new this month and last month's new merchants)." : "Merchants in this portfolio."} Source: fact.deliveries_live.{L.error && !L.snapshot ? " The last refresh failed (" + L.error + "); showing the last numbers read." : ""}{L.snapshot ? " This is a snapshot kept in the page; there is no live connection." : ""}
+        {kind === "sales" ? "Merchants of this sales rep (new this month, reactivations and last month's new merchants)." : "Merchants in this portfolio."} Source: fact.deliveries_live.{L.error && !L.snapshot ? " The last refresh failed (" + L.error + "); showing the last numbers read." : ""}{L.snapshot ? " This is a snapshot kept in the page; there is no live connection." : ""}
       </div>
     </div>
   );

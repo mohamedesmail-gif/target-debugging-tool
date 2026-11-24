@@ -3,7 +3,7 @@
 // Issues + Opportunities (current-month detail is real data, see m6)
 // ============================================================================
 function mpMonthLabel(i) { return MP_MON3[Number(MP_MONTHLY[i].month.slice(5)) - 1]; }
-function MPNoCm() { return <MPBanner text="Current-month detail data is not part of this build, so the tables are unavailable." />; }
+function MPNoCm() { return <MPBanner text="The current-month detail (parcel issues, tickets, failed attempts) is not loaded for this month, so these tables are unavailable. The monthly trends above still come from the warehouse." />; }
 
 function MPParcelTables() {
   if (!MP_CM) return <MPNoCm />;
@@ -88,7 +88,7 @@ function MPCxIssues({ onOpenMerchant }) {
   const isPending = (t) => t.status === "Pending" || t.status === "Pending Customer Response";
   const isComp = (t) => t.comp && !/not ask for a compensation/i.test(t.comp);
   const count = (arr, key) => { const m = {}; arr.forEach((t) => { m[t[key]] = (m[t[key]] || 0) + 1; }); return Object.entries(m).map(([label, value]) => ({ label, value })); };
-  const perDay = Array.from({ length: MP_CM.days }, (_, i) => ({ x: mpShortDate("2026-10-" + String(i + 1).padStart(2, "0")), Tickets: all.filter((t) => t.dom === i + 1).length }));
+  const perDay = Array.from({ length: MP_CM.days }, (_, i) => ({ x: mpShortDate(MP_CUR_MONTH_START.slice(0, 8) + String(i + 1).padStart(2, "0")), Tickets: all.filter((t) => t.dom === i + 1).length }));
   const open = all.filter((t) => t.status === "Open"), pending = all.filter(isPending), comps = all.filter(isComp);
   const base = [{ key: "id", label: "Ticket ID", mono: true }, { key: "date", label: "Date" }, ...(port ? [{ key: "merchant", label: "Merchant" }] : []), { key: "tracking", label: "Tracking #", mono: true }, { key: "agent", label: "Agent" }, { key: "type", label: "Type" }, { key: "category", label: "Category" }, { key: "status", label: "Status" }];
   const fk = port ? ["id", "tracking", "merchant", "agent"] : ["id", "tracking", "agent"];
@@ -129,7 +129,7 @@ function MPMerchantCustomerIssues({ onOpenMerchant }) {
   const sideInfo = "Grouped from the failure-reason wording (public.deliveries_attempts.exception_reason): Merchant = business or pickup/return reasons and product issues; Customer = reasons naming the customer or consignee; Address / phone data = 'waiting for data modification'; Other = phone off, weather. This grouping is derived, not a field.";
   const reasons = MP_CM.rs.map((r, i) => ({ label: r, value: s.byReason[i], color: MP_SIDE_COLOR[mpReasonSide(r)] })).filter((d) => d.value > 0);
   const share = (v) => (s.total ? Math.round((v / s.total) * 100) + "%" : "0%");
-  const perDay = s.byDay.map((d, i) => ({ x: mpShortDate("2026-10-" + String(i + 1).padStart(2, "0")), ...d }));
+  const perDay = s.byDay.map((d, i) => ({ x: mpShortDate(MP_CUR_MONTH_START.slice(0, 8) + String(i + 1).padStart(2, "0")), ...d }));
   const cols = [{ key: "tracking", label: "Tracking #", mono: true }, { key: "date", label: "Date" }, ...(port ? [{ key: "merchant", label: "Merchant" }] : []), { key: "reason", label: "Reason" }, { key: "side", label: "Side" }];
   return (
     <div>

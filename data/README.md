@@ -7,6 +7,8 @@ Keep the **data pack** in a private bucket / drive and unpack it here before bui
 |---|---|---|
 | `October_Targets_2026.xlsx` | Targets and org tree (Managers, Team Leaders, AMs, Sales sheets) | HR / commercial, input |
 | `new_data_oct.json` | Tracker data: AMs, merchants, monthly volumes, targets, categories | earlier tracker pull (`sql/pull_monthly_daily_packs.sql.txt`) |
+| `commercial_monthly_targets_db_YYYY-MM.json` | Targets of the month per AM and sales rep; also gives the AM list the portfolio is read for | targets table (Metabase) |
+| `commercial_monthly_targets_hierarchy_YYYY-MM.json` | Who reports to whom that month: [role, name, manager, team] | targets table (Metabase) |
 | `roster_rows.json` | Per merchant: id, name, AM, segment, monthly pack (Jan-Oct, 32 fields) and the first daily pack | `sql/pull_monthly_daily_packs.sql.txt` |
 | `profile_store.b64` | base64(gzip(JSON)) with merchant packs `p`, metadata `x`, portfolio packs `pf`, current-month detail `cm` | pulls in `sql/`, `scripts/ingest_cm.py`, `scripts/store_tools.py` |
 | `sales_rows_fp.json` | Sales new merchants and last month's cohort (first-pickup definition) | `sql/pull_sales_cohorts.sql` |

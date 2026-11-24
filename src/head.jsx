@@ -5,14 +5,15 @@
 // ---- per-merchant profile data: every merchant's own history, loaded on click from ./merchant_profile_data.js ----
 // (gzip + base64 packs built from mart.v_merchant_monthly_wide / mart.v_merchant_daily_wide / mart.v_parcel_lifecycle)
 let MP_MERCHANT = { id: "", name: "", segment: "", accountManager: "", joinDate: "", lastActivity: null };
-let MP_MONTHLY = [];        // Jan..Oct 2026, one object per month (October is month-to-date)
-let MP_DAILY_PREV = [];     // previous month (September), daily
-let MP_DAILY_CUR = [];      // current month (October), daily, month-to-date
-let MP_COMBINED_DAILY = []; // Sep 1 -> Oct 4
+let MP_MONTHLY = [];        // January .. the current month, one object per month (the current month is month-to-date)
+let MP_DAILY_PREV = [];     // previous month, daily
+let MP_DAILY_CUR = [];      // current month, daily, month-to-date
+let MP_COMBINED_DAILY = []; // 1st of last month -> as-of day
 let MP_X = { source: null, sourcePct: null, locations: [] };
-const MP_PREV_LABEL = "Sep", MP_CUR_LABEL = "Oct", MP_CUR_NAME = "October";
-const MP_MONTH_KEYS = ["2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06", "2026-07", "2026-08", "2026-09", "2026-10"];
-const MP_DAILY_START = "2026-09-01", MP_CUR_MONTH_START = "2026-10-01";
+// months follow the data (DATA.asOf): the packs hold January .. the current month, the daily detail starts on the 1st of last month
+const MP_MONTH_KEYS = HIST_MONTH_ORDER.concat([DATA.asOf.slice(0, 7)]);
+const MP_CUR_MONTH_START = DATA.asOf.slice(0, 7) + "-01", MP_DAILY_START = HIST_MONTH_ORDER[HIST_MONTH_ORDER.length - 1] + "-01";
+const MP_PREV_LABEL = PREV_MONTH_NAME.slice(0, 3), MP_CUR_LABEL = CUR_MONTH_NAME.slice(0, 3), MP_CUR_NAME = CUR_MONTH_NAME;
 const MP_M_FIELDS = ["ecomm_pickups", "fulfillment_pickups", "box_pickups", "parcels_picked", "parcels_delivered", "delivery_revenue_total", "delivery_revenue_shipping", "delivery_revenue_vas_total", "vas_extracod", "vas_next_day", "vas_insurance", "vas_flexship", "vas_allow_to_open", "vas_materials", "vas_handling", "dsr", "asr", "fake_attempts", "rto_without_attempt", "parcels_lost", "parcels_damaged", "compensation_amount", "parcels_rto", "parcels_returned", "zone_cairo_giza", "zone_alex_behira", "zone_delta_canal", "zone_near_upper", "zone_far_upper_matrouh", "zone_north_coast", "zone_sinai_new_valley", "zone_other"];
 const MP_D_FIELDS = ["ecomm_pickups", "fulfillment_pickups", "box_pickups", "parcels_picked", "parcels_delivered", "delivery_revenue_total", "delivery_revenue_vas_total", "dsr", "asr", "fake_attempts", "rto_without_attempt", "parcels_lost", "parcels_damaged", "compensation_amount"];
 
@@ -162,7 +163,8 @@ function weekOfMonthFromDailyMP(daily) {
 function computeFlagsMP(monthIdx) {
   const cur = MP_MONTHLY[monthIdx];
   const prev = monthIdx > 0 ? MP_MONTHLY[monthIdx - 1] : null;
-  const anyBefore = MP_MONTHLY.slice(0, monthIdx).some((m) => (m.ecomm_pickups + m.fulfillment_pickups + m.box_pickups) > 0);
+  // reactivated = active in any month before last month (first pickup before it, or pickups in an earlier month), no pickup last month, pickups now
+  const anyBefore = MP_MONTHLY.slice(0, Math.max(0, monthIdx - 1)).some((x) => (x.ecomm_pickups + x.fulfillment_pickups + x.box_pickups) > 0) || (monthIdx > 0 && !!MP_MERCHANT.joinDate && MP_MERCHANT.joinDate.slice(0, 7) < MP_MONTHLY[monthIdx - 1].month);
   const curActive = (cur.ecomm_pickups + cur.fulfillment_pickups + cur.box_pickups) > 0;
   const prevActive = prev ? (prev.ecomm_pickups + prev.fulfillment_pickups + prev.box_pickups) > 0 : false;
   const joinMonth = MP_MERCHANT.joinDate.slice(0, 7);

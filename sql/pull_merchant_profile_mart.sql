@@ -2,10 +2,8 @@
 -- Rule (defined here, not recovered from the old snapshot): parcels created in the last 90 days (__FROM__ = today - 90); dominant creation_source, its % share,
 -- and the 2 most frequent "pickup_city / pickup_zone" pairs. Output: merchant_id, creation_source, source_pct, locations ("a|b").
 -- Check on 40 old merchants: the dominant source equals the old value for 38 of 40; share and locations differ because the old window is unknown.
-WITH latest AS (
-  SELECT business_id, account_manager, ROW_NUMBER() OVER (PARTITION BY business_id ORDER BY date DESC) rn
-  FROM mart.v_merchant_monthly_wide WHERE date >= DATE '__OWNER_SINCE__'),
-owner AS (SELECT business_id FROM latest WHERE rn=1 AND account_manager IN (__AM_LIST__)),
+WITH owner AS (SELECT business_id, account_manager_name AS account_manager FROM public.businesses   -- today's owner (public.businesses), AMs of the targets table
+  WHERE account_type = 'merchant' AND account_manager_name IN (__AM_LIST__)),
 p AS (SELECT l.merchant_id, NVL(l.creation_source, 'null') AS cs, l.pickup_city || ' / ' || NVL(l.pickup_zone, 'None') AS loc
       FROM mart.v_parcel_lifecycle l JOIN owner o ON o.business_id = l.merchant_id WHERE l.created_at >= DATE '__FROM__'),
 s AS (SELECT merchant_id, cs, COUNT(*) AS n, ROW_NUMBER() OVER (PARTITION BY merchant_id ORDER BY COUNT(*) DESC, cs) AS rk, SUM(COUNT(*)) OVER (PARTITION BY merchant_id) AS tot FROM p GROUP BY merchant_id, cs),

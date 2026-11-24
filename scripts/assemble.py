@@ -25,7 +25,7 @@ import json as _json
 _lines = tb['s'].split('\n'); assert _lines[3].startswith('const DATA = __DATA__')
 _D = _json.load(open('../data/new_data_oct.json', encoding='utf-8'))
 _ptd = _json.load(open('../data/ptd_sep1_4.json')); _td = _json.load(open('../data/td_oct1_4.json')); _asp = _json.load(open('../data/merchant_asp.json')); _dsr = _json.load(open('../data/merchant_dsr.json'))
-for _am in _D['ams'].values():
+for _am in list(_D['ams'].values()) + list((_D.get('vpExtra') or {}).values()) + ([_D['salesExtra']] if _D.get('salesExtra') else []):   # AM portfolios, VP-only groups, sales reps' merchants outside the AM portfolios
     for _m in _am['merchants']:
         _m['ptd'] = _ptd.get(_m['id'], 0); _m['td'] = _td.get(_m['id'], 0)
         _m['dsrSep'], _m['sepPicked'] = _dsr.get(_m['id'], [None, 0])
@@ -129,7 +129,8 @@ _toggle = """        <div style={{ display: "flex", gap: 6, alignItems: "center"
           <span style={{ fontSize: 12, color: COLORS.textMuted }}>Search:</span>
           <input value={fid} onChange={(e) => setFid(e.target.value)} placeholder="Business ID" aria-label="Search business ID" style={{ ...UI.input, minWidth: 150 }} />
           <input value={fname} onChange={(e) => setFname(e.target.value)} placeholder="Business name" aria-label="Search business name" style={{ ...UI.input, minWidth: 170 }} />
-          {(fid || fname) && <button onClick={() => { setFid(""); setFname(""); }} style={UI.btnSmall}>Clear</button>}
+          <StatusFilter value={stF} onChange={(v) => { setStF(v); setExpandedId(null); }} rows={analysis.merchants} />
+          {(fid || fname || stF !== "all") && <button onClick={() => { setFid(""); setFname(""); setStF("all"); }} style={UI.btnSmall}>Clear</button>}
         </div>
         {tableView === "pickups" && (
           <div style={{ display: "flex", gap: 6, alignItems: "center", margin: "0 0 10px" }}>
@@ -163,7 +164,8 @@ infos = [
  ('<StatCard label="Droppers"', "Merchants whose average pickups per working day so far is at least 15% below the same days of last month (GR % of -15% or less), and who still have pickups this month."),
  ('<StatCard label="Stable"', "Merchants whose GR % is between -15% and +15%."),
  ('<StatCard label="Churned"', "Merchants with no pickups yet this month."),
- ('<StatCard label="New"', "Merchants that joined this month."),
+ ('<StatCard label="Reactivations"', "Merchants active before, with no pickup in the previous 25th-to-25th month (the 25th of two months ago to the 24th of last month) and pickups again since the 25th of last month; their numbers count from the 25th of last month. Their pickups, revenue and every other number count in the portfolio totals."),
+ ('<StatCard label="New"', "Merchants with a first pickup from the 25th of last month up to the 25th of this month. Their pickups, revenue and averages count from the 25th of last month (not from the 1st), and these numbers are part of every total."),
 ]
 for k, t in infos:
     trep(k, k.replace('<StatCard ', '<StatCard info="' + t.replace('"', '&quot;') + '" ', 1))
@@ -278,9 +280,9 @@ hrep('if (e) parsed.push({ item: { ...m, am }, monthly: mpParseMonthly(e[0]) });
 hrep('MP_PF = { am, target: amData.target, team: amData.team || "", count: amData.base, analysis, parsed, stats: { subs, parents, websites, segmentMix } };',
      'const dateIdx = {}; MP_COMBINED_DAILY.forEach((d, i) => { dateIdx[d.date] = i; });\n  MP_PF = { am, target: amData.target, team: amData.team || "", count: amData.base, analysis, parsed, dateIdx, stats: { subs, parents, websites, segmentMix } };')
 
-hrep('let MP_CUR_WD = 0;', 'let MP_CUR_WD = 0;\nlet MP_CM = null;      // current-month detail: parcel issues, tickets, failed attempts (embedded, roster only)\nlet MP_CM_P = { i: {}, t: {}, a: {} };')
-hrep('  mpBuildSamples(merchant.id);', '  MP_CM = store.cm || null; MP_CM_P = { i: {}, t: {}, a: {} };')
-hrep('  MP_MODE = "portfolio";\n', '  MP_MODE = "portfolio";\n  MP_CM = store.cm || null; MP_CM_P = { i: {}, t: {}, a: {} };\n')
+hrep('let MP_CUR_WD = 0;', 'let MP_CUR_WD = 0;\nconst mpCmOfMonth = (cm) => (cm && String(cm.asOf || "").slice(0, 7) === DATA.asOf.slice(0, 7) ? cm : null);   // the detail is shown only for the month it was pulled for\nlet MP_CM = null;      // current-month detail: parcel issues, tickets, failed attempts (embedded, roster only)\nlet MP_CM_P = { i: {}, t: {}, a: {} };')
+hrep('  mpBuildSamples(merchant.id);', '  MP_CM = mpCmOfMonth(store.cm); MP_CM_P = { i: {}, t: {}, a: {} };')
+hrep('  MP_MODE = "portfolio";\n', '  MP_MODE = "portfolio";\n  MP_CM = mpCmOfMonth(store.cm); MP_CM_P = { i: {}, t: {}, a: {} };\n')
 
 # ---- filtered group of merchants: the portfolio view built from the merchants' own packs
 hrep('async function mpLoadPortfolio(am, amData, analysis) {', 'async function mpLoadPortfolio(am, amData, analysis, subset) {')
@@ -315,7 +317,7 @@ function mpAggregateSubset(store, merchants) {
   return { monthly, daily: days || [] };
 }
 function mpSubsetAnalysis(merchants) {
-  return { merchants, growerCount: merchants.filter((m) => m.standing === "Grower").length, dropperCount: merchants.filter((m) => m.standing === "Dropper").length, stableCount: merchants.filter((m) => m.standing === "Stable").length, churnedCount: merchants.filter((m) => m.category === "Churned").length, newCount: merchants.filter((m) => m.category === "New").length };
+  return { merchants, growerCount: merchants.filter((m) => m.standing === "Grower").length, dropperCount: merchants.filter((m) => m.standing === "Dropper").length, reactivationCount: merchants.filter((m) => m.standing === "Reactivation").length, stableCount: merchants.filter((m) => m.standing === "Stable").length, churnedCount: merchants.filter((m) => m.category === "Churned").length, newCount: merchants.filter((m) => m.category === "New").length };
 }
 
 // top merchants of the portfolio for one month and one field (clickable items)""")
@@ -345,6 +347,14 @@ out = out.replace(_vk_old, _vk_old + '\n  PRC_VIEWER_KEY = viewerKey;\n  PRC_SCR
 # the window labels in the source say "Oct 1-4" / "Sep 1-4": fill them with the days of the data (ORG.days)
 _N = _json.load(open('../data/org_final.json', encoding='utf-8'))['days']
 out = out.replace('Oct 1\u20134', 'Oct 1\u2013%d' % _N).replace('Sep 1\u20134', 'Sep 1\u2013%d' % _N)
+# the labels in the source are written for "this month = October, last month = September": name the months of the data instead
+# (DATA.asOf). Month-name lists ("Jan", "Feb", ... / "January", "February", ...) and fixed facts (the simulator's September P&L) are left alone.
+import datetime as _dt
+_c0 = _dt.date.fromisoformat(_D['asOf']).replace(day=1); _p0 = (_c0 - _dt.timedelta(days=1)).replace(day=1)
+_MAP = {'October': _c0.strftime('%B'), 'September': _p0.strftime('%B'), 'Oct': _c0.strftime('%b'), 'Sep': _p0.strftime('%b')}
+if _MAP['Oct'] != 'Oct':
+    _keep = re.compile(r'"Jan", "Feb"|"January", "February"|September 2026 actual profit')
+    out = '\n'.join(l if _keep.search(l) else re.sub(r'\b(September|October|Sep|Oct)\b', lambda m_: _MAP[m_.group(1)], l) for l in out.split('\n'))
 # ---- no data inside the app: the code is wrapped so that it is built from a payload; the payload is a separate file
 _head_imports = re.match(r'((?:import [^\n]*\n)+)', out).group(1)
 _body = out[len(_head_imports):].replace('export default function TargetTracker(', 'function TargetTrackerApp(')

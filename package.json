@@ -8,7 +8,7 @@
     "assemble": "python3 scripts/assemble.py",
     "bundle:test": "esbuild dist/target_tracker.jsx --bundle --format=esm --loader:.jsx=jsx --outfile=dist/bundle.mjs --external:react --external:react-dom --external:lucide-react --log-level=error",
     "check:scripts": "python3 -m py_compile scripts/*.py",
-    "test": "npm run check:scripts && python3 tests/new_window.py && python3 tests/test_refresh_live.py && npm run assemble && npm run bundle:test && node tests/smoke.mjs && node tests/live.mjs fresh && node tests/live.mjs snapshot && node tests/live.mjs none && node tests/pricing.mjs && node tests/simulator.mjs",
+    "test": "npm run check:scripts && python3 tests/new_window.py && python3 tests/test_refresh_live.py && npm run assemble && npm run bundle:test && python3 tests/month_map.py && node tests/.smoke_run.mjs && node tests/live.mjs fresh && node tests/live.mjs snapshot && node tests/live.mjs none && node tests/pricing.mjs && node tests/simulator.mjs",
     "test:pricing": "node tests/pricing.mjs && node tests/simulator.mjs",
     "build:pricing": "python3 scripts/build_pricing.py",
     "web:dev": "npm run assemble && vite web --host",

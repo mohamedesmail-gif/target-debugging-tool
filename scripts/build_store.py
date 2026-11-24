@@ -19,6 +19,10 @@ def domain(u):
     d = re.split(r'[/?#]', d)[0].split('@')[-1]; d = re.sub(r':\d+$', '', d).strip()
     return d or raw
 
+def vp_group(r):
+    """Pack key of a VP-only merchant (scope 'vp'): the same names as sql/pull_portfolio_monthly.sql."""
+    return 'VP \u00b7 Box' if r[3] == 'Box' else 'VP \u00b7 No segment' if r[3] in (None, '', 'Non') else 'VP \u00b7 Other segments'
+
 def build(prev, rows, daily, meta, pfm, xmart=None):
     p = {r[0]: [r[6], daily[r[0]]] for r in rows}
     x = {}
@@ -32,7 +36,9 @@ def build(prev, rows, daily, meta, pfm, xmart=None):
             if m.get(k) not in (None, ''): e[k] = m[k]
         x[r[0]] = e
     by_am = {}
-    for r in rows: by_am.setdefault(r[2], []).append(r)
+    for r in rows:
+        if len(r) > 8 and r[8] == 'sales': continue                  # sales reps' merchants outside the AM portfolios: no portfolio pack of their own
+        by_am.setdefault(vp_group(r) if len(r) > 8 and r[8] == 'vp' else r[2], []).append(r)
     pf = {}
     for am, ms in by_am.items():
         pulled = [list(map(int, s.split(','))) for s in pfm[am].split(';')]

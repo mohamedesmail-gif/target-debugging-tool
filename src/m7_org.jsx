@@ -1,6 +1,6 @@
 
 // ============================================================================
-// Org levels: VP -> Heads -> Team leaders -> Sales & AMs (targets from October_Targets_2026.xlsx, hierarchy included)
+// Org levels: VP -> Heads -> Team leaders -> Sales & AMs (targets and hierarchy of the month: data/commercial_monthly_targets_*_YYYY-MM.json)
 //   Pickups : portfolio pickups (AMs) vs the monthly target; for Sales: pickups of merchants created this month.
 //   ASP     : delivery revenue total / parcels delivered, Oct 1-4 (target as given: no growth factor).
 //   AM retention : merchants active in September that have a pickup in October so far (target = minimum).
@@ -15,14 +15,14 @@ const ORG_AM_PICKED = {};
 ORG.ams.forEach((a) => { ORG_AM_PICKED[a.name] = DATA.ams[a.name].merchants.reduce((s, m) => s + m.mtd, 0); });
 
 function orgAgg(ams, sales) {
-  const z = { pickups: 0, pickTarget: 0, aspNum: 0, aspDen: 0, retBase: 0, retKept: 0, retW: 0, retWT: 0, aspWT: 0, aspW: 0, newPicked: 0, newDelivered: 0, newRevenue: 0, newTarget: 0, newMerchants: 0, cohort: 0, churned: 0, churnW: 0, churnWT: 0 };
+  const z = { pickups: 0, pickTarget: 0, aspNum: 0, aspDen: 0, retBase: 0, retKept: 0, retW: 0, retWT: 0, aspWT: 0, aspW: 0, newPicked: 0, newDelivered: 0, newRevenue: 0, newTarget: 0, newMerchants: 0, reactMerchants: 0, reactPicked: 0, cohort: 0, churned: 0, churnW: 0, churnWT: 0 };
   ams.forEach((a) => {
     z.pickups += ORG_AM_PICKED[a.name]; z.pickTarget += a.t.pickups; z.aspNum += a.a.aspNum; z.aspDen += a.a.aspDen; z.retBase += a.a.retBase; z.retKept += a.a.retKept;
     z.aspWT += a.t.asp * a.t.pickups; z.aspW += a.t.pickups;
     if (a.t.retention != null) { z.retWT += a.t.retention * a.t.pickups; z.retW += a.t.pickups; }
   });
   sales.forEach((s) => {
-    z.newPicked += s.a.newPicked; z.newDelivered += s.a.newDelivered; z.newRevenue += s.a.newRevenue; z.newTarget += s.t.newPickups; z.newMerchants += s.a.newMerchants; z.cohort += s.a.cohort; z.churned += s.a.cohortChurned;
+    z.newPicked += s.a.newPicked; z.newDelivered += s.a.newDelivered; z.newRevenue += s.a.newRevenue; z.newTarget += s.t.newPickups; z.newMerchants += s.a.newMerchants; z.reactMerchants += s.a.reactMerchants || 0; z.reactPicked += s.a.reactPicked || 0; z.cohort += s.a.cohort; z.churned += s.a.cohortChurned;
     if (s.t.churn != null) { z.churnWT += s.t.churn * s.t.newPickups; z.churnW += s.t.newPickups; }
   });
   return z;
@@ -39,8 +39,10 @@ function orgScore(kind, ent) {
   const { ams, sales } = orgMembers(kind, ent);
   const g = orgAgg(ams, sales);
   const t = ent.t || {};
-  const isSales = kind === "sales";
-  const pickTarget = kind === "vp" ? g.pickTarget : isSales ? t.newPickups : t.pickups;
+  // a team of sales reps only (no AM, e.g. a sales team leader): its pickups and ASP are the fresh-sales numbers (new merchants + reactivations) against the fresh target
+  const salesOnly = kind !== "sales" && kind !== "vp" && ams.length === 0 && sales.length > 0;
+  const isSales = kind === "sales" || salesOnly;
+  const pickTarget = kind === "vp" ? g.pickTarget : kind === "sales" ? t.newPickups : salesOnly ? (t.fresh != null ? t.fresh : g.newTarget) : t.pickups;
   const aspTarget = kind === "vp" ? (g.aspW ? g.aspWT / g.aspW : null) : t.asp;
   const aspActual = isSales ? (g.newDelivered ? g.newRevenue / g.newDelivered : null) : (g.aspDen ? g.aspNum / g.aspDen : null);
   const retTarget = kind === "am" ? t.retention : kind === "tl" && t.retention != null ? t.retention : g.retW ? g.retWT / g.retW : null;
@@ -50,6 +52,7 @@ function orgScore(kind, ent) {
     pickups: { actual: isSales ? g.newPicked : g.pickups, target: pickTarget },
     asp: { actual: aspActual, target: aspTarget, base: isSales ? g.newDelivered : g.aspDen },
     fresh: isSales || kind === "am" ? null : { actual: g.newPicked, target: freshTarget },
+    salesOnly,
     retention: kind === "sales" || !g.retBase ? null : { actual: g.retKept / g.retBase, target: retTarget, implied: kind !== "am" && !(kind === "tl" && t.retention != null), base: g.retBase },
     churn: kind === "am" || !g.cohort ? null : { actual: g.churned / g.cohort, target: churnTarget, implied: !isSales, base: g.cohort },
     weights: ent.w, g,
@@ -75,16 +78,16 @@ function OrgCard({ label, info, value, sub, accent, children }) {
 }
 const ORG_INFO = {
   pickups: "Portfolio pickups this month so far (Oct 1–4) vs the monthly target. Green = ahead of the share of the month already worked (" + ORG.wdElapsed + " of " + DATA.wdFull + " working days), red = behind.",
-  newPickups: "Pickups this month of merchants whose FIRST pickup is in the new-merchant window, from the 25th of last month up to the 25th of this month (public.businesses.firstpickuppickedupat, the same date as the mart's joining date) and who have this sales rep as owner. Early in the month this is small by nature.",
-  fresh: "Pickups from merchants acquired this month by the sales reps in this team (the 'Fresh Sales Target' in the sheet).",
+  newPickups: "Pickups of this sales rep's new merchants and reactivations. New merchants count from the 25th of last month; reactivations (merchants active before, with no pickup in the previous 25th-to-25th month (the 25th of two months ago to the 24th of last month) and pickups again since the 25th of last month; their numbers count from the 25th of last month) count this month. New merchants are those whose FIRST pickup is in the new-merchant window, from the 25th of last month up to the 25th of this month (public.businesses.firstpickuppickedupat, the same date as the mart's joining date) and who have this sales rep as owner. Early in the month this is small by nature.",
+  fresh: "Pickups of the new merchants (counted from the 25th of last month) and the reactivations (merchants active before, with no pickup in the previous 25th-to-25th month (the 25th of two months ago to the 24th of last month) and pickups again since the 25th of last month; their numbers count from the 25th of last month) of the sales reps in this team (the 'Fresh Sales Target' in the sheet).",
   asp: "ASP = (shipping revenue + VAS revenue) ÷ delivered parcels, Oct 1–4. The target is taken straight from the sheet, with no growth percentage. Green = at or above target.",
-  aspFresh: "ASP of the merchants this sales rep acquired this month: (shipping revenue + VAS revenue) ÷ delivered parcels, Oct 1–4. Target from the sheet.",
+  aspFresh: "ASP of this sales rep's new merchants and reactivations: (shipping revenue + VAS revenue) ÷ delivered parcels, Oct 1–4. Target from the sheet.",
   retention: "Share of merchants that were active in September (any pickup) that already have a pickup in October. Provisional: many simply haven't picked up yet, so the figure rises through the month. Target = minimum retention from the sheet.",
   churn: "Of the merchants these sales reps activated last month (first pickup in the previous window, from the 25th of two months ago up to the 25th of last month; owner as of the end-of-last-month snapshot in public.businesses_monthly_snapshot), the share with no pickup yet this month. Provisional until month end. Target = maximum churn: for Growth and Key sales the sheet's 'Churn%' column (0.81–0.86) is read as RETENTION, so max churn = 1 minus it (14–19%); the Startups unlabelled 0.25 is max churn 25%.",
 };
 
 function OrgScoreCards({ sc, kind, skipPickups }) {
-  const isSales = kind === "sales";
+  const isSales = kind === "sales" || sc.salesOnly;
   const p = sc.pickups, a = sc.asp, f = sc.fresh, r = sc.retention, c = sc.churn;
   const pAch = p.target ? p.actual / p.target : null;
   return (
@@ -93,7 +96,8 @@ function OrgScoreCards({ sc, kind, skipPickups }) {
         sub={p.target ? `${orgPct(pAch)} of ${fmt(p.target)} target` : "no target"}>{pAch != null && <OrgBar pct={pAch} color={orgPaceColor(pAch)} />}</OrgCard>)}
       <OrgCard label={isSales ? "ASP (fresh sales)" : "ASP"} info={isSales ? ORG_INFO.aspFresh : kind === "vp" ? ORG_INFO.asp + " The sheet has no ASP target for the VP: it is the average of the AMs' ASP targets, each weighted by that AM's pickups target (the same average the heads' targets give, within 0.03)." : ORG_INFO.asp} value={a.actual == null ? "—" : fmt(a.actual, 1)}
         accent={a.actual != null && a.target ? (a.actual >= a.target ? COLORS.teal : COLORS.coral) : undefined} sub={a.target ? `target ${fmt(a.target, 1)} · ${a.actual != null ? (a.actual >= a.target ? "+" : "") + fmt(a.actual - a.target, 1) : "—"}${isSales ? " · " + fmt(a.base) + " delivered" : ""}` : "no target"} />
-      {isSales && <OrgCard label="New accounts (MTD)" info={"Merchants with a " + NEW_RULE + " and who have this sales rep as owner (the accounts behind the new pickups)."} value={fmt(sc.g.newMerchants)} sub={NEW_PHRASE} />}
+      {kind === "sales" && <OrgCard label="Reactivations" info={"Merchants of this sales rep (owner in public.businesses) that were " + "active before, with no pickup in the previous 25th-to-25th month (the 25th of two months ago to the 24th of last month) and pickups again since the 25th of last month; their numbers count from the 25th of last month." + " Their pickups, delivered parcels and revenue count in the new pickups and the ASP."} value={fmt(sc.g.reactMerchants)} sub={fmt(sc.g.reactPicked) + " pickups, part of the new pickups"} accent={COLORS.chart} />}
+      {kind === "sales" && <OrgCard label="New accounts (MTD)" info={"Merchants with a " + NEW_RULE + " and who have this sales rep as owner (the accounts behind the new pickups)."} value={fmt(sc.g.newMerchants)} sub={NEW_PHRASE} />}
       {f && <OrgCard label="Fresh sales (new pickups)" info={ORG_INFO.fresh} value={fmt(f.actual)} accent={f.target ? orgPaceColor(f.actual / f.target) : undefined} sub={f.target ? `${orgPct(f.actual / f.target)} of ${fmt(f.target)} target` : "no target"}>{f.target ? <OrgBar pct={f.actual / f.target} color={orgPaceColor(f.actual / f.target)} /> : null}</OrgCard>}
       {r && <OrgCard label="Retention (portfolios)" info={ORG_INFO.retention} value={orgPct(r.actual)} sub={<span>{r.target != null ? `target ≥ ${orgPct(r.target)}${r.implied ? " (implied)" : ""}` : "no target"} · {fmt(r.base)} merchants · <em>provisional</em></span>} />}
       {c && <OrgCard label="Churn (last month's new merchants)" info={ORG_INFO.churn} value={orgPct(c.actual)} sub={<span>{c.target != null ? `target ≤ ${orgPct(c.target)}${c.implied ? " (implied)" : ""}` : "no target"} · {fmt(c.base)} merchants · <em>provisional</em></span>} />}
@@ -183,7 +187,7 @@ function OrgShell({ nav, current, children }) {
       <div className="tt-wrap">
         <LevelBar nav={nav} current={current} />
         {children}
-        <div style={{ fontSize: 11.5, color: COLORS.textFaint, marginTop: 8, lineHeight: 1.5 }}>Data as of {ORG.asOf} · targets from October_Targets_2026.xlsx. ASP = (shipping revenue + VAS revenue) ÷ delivered parcels. New merchants = merchants with a {NEW_RULE} and a sales owner (public.businesses); last month's window comes from public.businesses_monthly_snapshot.</div>
+        <div style={{ fontSize: 11.5, color: COLORS.textFaint, marginTop: 8, lineHeight: 1.5 }}>Data as of {ORG.asOf} · targets from the targets table of the month (public.commercial_monthly_targets). ASP = (shipping revenue + VAS revenue) ÷ delivered parcels. New merchants = merchants with a {NEW_RULE} and a sales owner (public.businesses); last month's window comes from public.businesses_monthly_snapshot. Reactivations = the sales rep's merchants with no pickup from the 25th of two months ago to the 24th of last month and pickups since the 25th of last month (counted from that day); their pickups, delivered parcels and revenue count in the new pickups and the ASP.</div>
       </div>
     </div>
   );
@@ -200,7 +204,7 @@ function salesWorkingDays(from, to) { // working days (Fridays excluded) from..t
 }
 function SalesScreen({ nav }) {
   const s = nav.allowedSales.find((x) => x.id === nav.salesId) || nav.allowedSales[0];
-  const [fid, setFid] = useState(""); const [fname, setFname] = useState("");
+  const [fid, setFid] = useState(""); const [fname, setFname] = useState(""); const [stF, setStF] = useState("all");
   const [view, setView] = useState("pickups"); // "pickups" | "asp"
   const [sortKey, setSortKey] = useState("mtdAvg"); const [sortDir, setSortDir] = useState("desc");
   const [openId, setOpenId] = useState(null);
@@ -216,14 +220,15 @@ function SalesScreen({ nav }) {
   const all = [
     ...s.newList.map((r) => ({ id: r[0], name: r[1], fp: r[2], mtd: r[3], dl: r[4], rev: r[5], prev: null, group: "New", status: "New" })),
     ...s.cohortList.map((r) => ({ id: r[0], name: r[1], fp: r[2], mtd: r[3], dl: r[4], rev: r[5], prev: r[6], group: "Last month's new", status: r[3] > 0 ? "Active" : "Churned" })),
+    ...(s.reactList || []).map((r) => ({ id: r[0], name: r[1], fp: r[2], mtd: r[3], dl: r[4], rev: r[5], prev: r[6], group: "Reactivation", status: "Reactivation" })),
   ].map((r) => {
-    const mtdAvg = el ? r.mtd / el : 0, prevAvg = r.prev == null ? null : r.prev / salesWorkingDays(r.fp, prevEnd);
+    const mtdAvg = r.group === "New" && DATA.newFrom ? r.mtd / salesWorkingDays(DATA.newFrom, DATA.asOf) : el ? r.mtd / el : 0, prevAvg = r.prev == null ? null : r.prev / salesWorkingDays(r.fp, prevEnd);
     const delta = prevAvg == null ? null : mtdAvg - prevAvg, gr = prevAvg > 0 ? (delta / prevAvg) * 100 : null;
-    const standing = r.group === "New" ? "New" : r.mtd <= 0 ? "Churned" : gr == null ? "Stable" : gr >= GROWTH_THRESHOLD_PCT ? "Grower" : gr <= -GROWTH_THRESHOLD_PCT ? "Dropper" : "Stable";   // same ±15% rule as the AM view
+    const standing = r.group === "New" ? "New" : r.group === "Reactivation" ? "Reactivation" : r.mtd <= 0 ? "Churned" : gr == null ? "Stable" : gr >= GROWTH_THRESHOLD_PCT ? "Grower" : gr <= -GROWTH_THRESHOLD_PCT ? "Dropper" : "Stable";   // same ±15% rule as the AM view
     return { ...r, standing, mtdAvg, prevAvg, delta, gr, run: r.mtd + mtdAvg * rem, asp: r.dl ? r.rev / r.dl : null, ofGoal: goal ? r.mtd / goal : null, shareP: pk ? r.mtd / pk : null, runOfGoal: goal ? (r.mtd + mtdAvg * rem) / goal : null };
   });
   const t = s.tlId ? ORG_TL[s.tlId] : null, h = ORG_HEAD[s.headId];
-  const match = (r) => (!fid || r.id.toLowerCase().includes(fid.toLowerCase())) && (!fname || String(r.name).toLowerCase().includes(fname.toLowerCase()));
+  const match = (r) => (stF === "all" || r.standing === stF) && (!fid || r.id.toLowerCase().includes(fid.toLowerCase())) && (!fname || String(r.name).toLowerCase().includes(fname.toLowerCase()));
   const shown = all.filter(match);
   // ASP view: the same gap-contribution logic as the AM view, against this sales rep's ASP target
   const T = s.t.asp, elig = all.filter((r) => r.dl > 0), D = elig.reduce((x, r) => x + r.dl, 0), REV = elig.reduce((x, r) => x + r.rev, 0), P = D ? REV / D : null;
@@ -242,7 +247,7 @@ function SalesScreen({ nav }) {
   const drill = (r, cols) => (
     <tr><td colSpan={cols} style={{ padding: 0, borderTop: `1px solid ${COLORS.panelBorder}` }}>
       <div style={{ padding: "14px 20px 16px 38px", background: COLORS.card, fontSize: 12.5, color: COLORS.textMuted, lineHeight: 1.7 }}>
-        <div>Business ID: <strong style={{ color: COLORS.text, fontFamily: THEME.font }}>{r.id}</strong> · first pickup <strong style={{ color: COLORS.text }}>{r.fp}</strong> · {r.group === "New" ? <span style={{ color: COLORS.purple }}>New this month: no history to compare with yet.</span> : <span>acquired last month (owner as of the end-of-month snapshot).</span>}</div>
+        <div>Business ID: <strong style={{ color: COLORS.text, fontFamily: THEME.font }}>{r.id}</strong> · first pickup <strong style={{ color: COLORS.text }}>{r.fp}</strong> · {r.group === "New" ? <span style={{ color: COLORS.purple }}>New this month: no history to compare with yet.</span> : r.group === "Reactivation" ? <span style={{ color: COLORS.teal }}>Reactivated: no pickup from the 25th of two months ago to the 24th of last month, back since the 25th of last month (counted from that day).</span> : <span>acquired last month (owner as of the end-of-month snapshot).</span>}</div>
         <div>This month so far: <strong style={{ color: COLORS.text }}>{fmt(r.mtd)}</strong> pickups ({fmt(r.mtdAvg, 1)} per working day), <strong style={{ color: COLORS.text }}>{fmt(r.dl)}</strong> delivered parcels, revenue <strong style={{ color: COLORS.text }}>{fmt(r.rev)}</strong> EGP, ASP <strong style={{ color: COLORS.text }}>{r.asp == null ? "—" : fmt(r.asp, 2)}</strong>.</div>
         {r.prev != null && <div>Last month: <strong style={{ color: COLORS.text }}>{fmt(r.prev)}</strong> pickups in total, about {fmt(r.prevAvg, 1)} per working day from the first pickup. {r.status === "Churned" ? <span style={{ color: COLORS.coral }}>No pickup yet this month (provisional until month end).</span> : null}</div>}
       </div>
@@ -262,16 +267,17 @@ function SalesScreen({ nav }) {
         <OrgSelect value={s.id} onChange={(id) => { nav.go("sales", id); setOpenId(null); }} options={nav.allowedSales.map((x) => ({ value: x.id, label: x.name }))} />
         <button onClick={() => setPfOpen(true)} style={{ ...UI.btn, color: COLORS.navy }}>Portfolio overview<ArrowRight size={15} strokeWidth={1.75} aria-hidden="true" /></button>
       </div>
-      <div style={{ color: COLORS.textMuted, fontSize: 13, margin: "6px 0 18px" }}>sales · {s.team} · {all.length} merchants (new this month and last month's acquisitions) · data as of {DATA.asOf}</div>
+      <div style={{ color: COLORS.textMuted, fontSize: 13, margin: "6px 0 18px" }}>sales · {s.team} · {all.length} merchants (new this month, reactivations and last month's acquisitions) · data as of {DATA.asOf}</div>
       <AchievementBar pct={ofTarget * 100} detail={fmt(pk) + " of " + fmt(goal) + " new pickups"} />
       <TargetSections sc={sc} kind="sales" ent={s} over={{ actual: pk, target: goal, avgDaily, projected: run, projPct: runPct, needDaily: goal / full }} />
-      <SectionLabel>Merchants &middot; growers, droppers, stable, churned, new (adds up to {all.length})</SectionLabel>
+      <SectionLabel>Merchants &middot; growers, droppers, stable, churned, new, reactivations (adds up to {all.length})</SectionLabel>
       <div className="tt-kpis" style={{ ...UI.card, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 160px), 1fr))", gap: 12, marginBottom: 22 }}>
         {[["Growers", "Grower", COLORS.teal, "GR +15% or more", "Last month's new merchants whose average per working day this month is at least 15% above last month's."],
           ["Droppers", "Dropper", COLORS.coral, "GR -15% or less", "Last month's new merchants whose average per working day this month is at least 15% below last month's."],
           ["Stable", "Stable", COLORS.blue, "GR between -15% and +15%", "Last month's new merchants within 15% of last month's average per working day."],
           ["Churned", "Churned", COLORS.slate, "no pickups this month yet", "Last month's new merchants with no pickup yet this month. Provisional until month end."],
-          ["New", "New", COLORS.purple, NEW_PHRASE, "Merchants with a " + NEW_RULE + " and who have this sales rep as owner."]].map(([l, k, c, sub, info]) => {
+          ["New", "New", COLORS.purple, NEW_PHRASE, "Merchants with a " + NEW_RULE + " and who have this sales rep as owner."],
+          ["Reactivations", "Reactivation", COLORS.chart, "back since the 25th", "Merchants of this sales rep " + "active before, with no pickup in the previous 25th-to-25th month (the 25th of two months ago to the 24th of last month) and pickups again since the 25th of last month; their numbers count from the 25th of last month." + " Their numbers count in the new pickups and the ASP."]].map(([l, k, c, sub, info]) => {
           const n = all.filter((r) => r.standing === k).length;
           return <StatCard key={k} info={info} label={l} value={n} sub={fmt((n / (all.length || 1)) * 100, 0) + "% of merchants · " + sub} accent={c} />;
         })}
@@ -292,7 +298,8 @@ function SalesScreen({ nav }) {
         <span style={{ fontSize: 12, color: COLORS.textMuted }}>Search:</span>
         <input value={fid} onChange={(e) => setFid(e.target.value)} placeholder="Business ID" style={inp} />
         <input value={fname} onChange={(e) => setFname(e.target.value)} placeholder="Business name" style={inp} />
-        {(fid || fname) && <button onClick={() => { setFid(""); setFname(""); }} style={{ fontSize: 12, padding: "6px 10px", borderRadius: 12, border: `1px solid ${COLORS.panelBorder2}`, background: COLORS.panel, cursor: "pointer" }}>Clear</button>}
+        <StatusFilter value={stF} onChange={(v) => { setStF(v); setOpenId(null); }} rows={all} />
+        {(fid || fname || stF !== "all") && <button onClick={() => { setFid(""); setFname(""); setStF("all"); }} style={{ fontSize: 12, padding: "6px 10px", borderRadius: 12, border: `1px solid ${COLORS.panelBorder2}`, background: COLORS.panel, cursor: "pointer" }}>Clear</button>}
       </div>
       {view === "pickups" && (
         <div style={{ display: "flex", gap: 6, alignItems: "center", margin: "0 0 10px" }}>

@@ -21,13 +21,18 @@ const errors = [];
 window.addEventListener('error', (e) => errors.push(e.error ? e.error.stack : e.message));
 const ce = console.error; console.error = (...a) => { const s = a.join(' '); if (!/act\(|Warning: /.test(s)) errors.push('console.error: ' + s.slice(0, 300)); };
 const PAYLOAD = JSON.parse(fs.readFileSync(new URL('../dist/payload.json', import.meta.url), 'utf8'));
+const STORE0 = JSON.parse((await import('node:zlib')).gunzipSync(Buffer.from(PAYLOAD.store, 'base64')).toString());
+const CMOK = !!(STORE0.cm && String(STORE0.cm.asOf || '').slice(0, 7) === PAYLOAD.data.asOf.slice(0, 7));   // current-month detail pulled for the data month?
+// a check on the current-month detail: when it was not pulled for this month, the page must say so instead of showing old numbers
+const cmCheck = (name, cond, detail) => (CMOK ? check(name, cond, detail) : check(name.replace(/:.*/, '') + ': detail not loaded for this month, the page says so (no old numbers)', txt().includes('not loaded for this month')));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const click = (el) => el.dispatchEvent(new window.Event('click', { bubbles: true }));
 const btn = (t) => Array.from(document.querySelectorAll('button')).find((b) => b.textContent.trim() === t);
 const txt = () => document.body.textContent;
 const DNEW = JSON.parse(fs.readFileSync(new URL('../data/new_data_oct.json', import.meta.url), 'utf8'));
 const DNEW_TH = DNEW.ams['Farha Aly Saad'].merchants.find((m) => m.id === 'ImbeR25m9');
-const THTARGET = (DNEW_TH.monthly.sep * 1.6 / 26).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const PREVK = DNEW.monthKeys ? DNEW.monthKeys[DNEW.monthKeys.length - 1] : 'sep';   // last complete month of the data
+const THTARGET = (DNEW_TH.monthly[PREVK] * 1.6 / DNEW.wdFull).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 const txtNoSel = () => { const c = document.body.cloneNode(true); c.querySelectorAll('select').forEach((x) => x.remove()); return c.textContent; };   // page text without the dropdown options
 const listSel = () => Array.from(document.querySelectorAll('select')).find((x) => x.getAttribute('aria-label') === 'Top and bottom list');
 const entSel = () => Array.from(document.querySelectorAll('select')).find((x) => x.getAttribute('aria-label') !== 'Top and bottom list');
@@ -60,7 +65,7 @@ const AUTH_ON = false;
   const L0 = txt();
   check('no login screen: the app opens straight on the VP view with every level available', !btn('Continue with Google') && L0.includes('Activity analysis') && !btn('Sign out') && !document.querySelector('[data-testid="user-chip"]') && ['VP', 'Heads', 'Team leaders', 'Sales', 'AMs'].every((l) => !!btn(l)));
   check('the app file contains no data: it is code only (< 1 MB) and every number comes from the payload', fs.statSync(new URL('../dist/target_tracker.jsx', import.meta.url)).size < 1e6 && !fs.readFileSync(new URL('../dist/target_tracker.jsx', import.meta.url), 'utf8').includes('ImbeR25m9'));
-  check('growth window: days compared and working days of the same days last month come from the data (not fixed numbers)', PAYLOAD.data.ptdDays === PAYLOAD.org.days && PAYLOAD.data.wdPtd === PAYLOAD.org.days - [...Array(PAYLOAD.org.days).keys()].filter((i) => new Date(Date.UTC(2026, 8, 1 + i)).getUTCDay() === 5).length);
+  check('growth window: days compared and working days of the same days last month come from the data (not fixed numbers)', PAYLOAD.data.ptdDays === PAYLOAD.org.days && PAYLOAD.data.wdPtd === PAYLOAD.org.days - [...Array(PAYLOAD.org.days).keys()].filter((i) => new Date(Date.UTC(2026, Number(PAYLOAD.data.asOf.slice(5, 7)) - 2, 1 + i)).getUTCDay() === 5).length);
 }
 const landedOnVp = txt().includes('Sameh Shaheen') && txt().includes('View level');
 click(btn('AMs')); await sleep(120);
@@ -109,11 +114,12 @@ check('info icon opens a tooltip', document.body.textContent.length > p.length);
 const dates = Array.from(document.querySelectorAll('input[type="date"]'));
 check('from / to calendar inputs replace the month dropdown', dates.length === 2 && !document.querySelector('select.emph') && dates[0].value === '2026-01-01' && dates[1].value === DNEW.asOf);
 let rowsMonthly = document.querySelectorAll('tbody tr').length;
-check('monthly table has 10 rows (Jan-Oct)', rowsMonthly === 10, String(rowsMonthly));
+const CMN = Number(DNEW.asOf.slice(5, 7));   // months January .. the data month
+check('monthly table has one row per month (Jan-Oct)', rowsMonthly === CMN, String(rowsMonthly));
 setInput(dates[0], '2026-07-01'); await sleep(40);
-check('range from Jul 1 -> table has 4 months', document.querySelectorAll('tbody tr').length === 4, String(document.querySelectorAll('tbody tr').length));
-setInput(document.querySelectorAll('input[type="date"]')[1], '2026-09-30'); await sleep(40);
-check('range to Sep 30 -> 3 months and hero follows Sep', document.querySelectorAll('tbody tr').length === 3 && txt().includes('Volume · Sep'));
+check('range from Jul 1 -> table has the months from July', document.querySelectorAll('tbody tr').length === CMN - 6, String(document.querySelectorAll('tbody tr').length));
+setInput(document.querySelectorAll('input[type="date"]')[1], new Date(Date.UTC(2026, CMN - 1, 0)).toISOString().slice(0, 10)); await sleep(40);
+check('range to the end of Sep -> months July .. Sep and hero follows Sep', document.querySelectorAll('tbody tr').length === CMN - 7 && txt().includes('Volume · Sep'));
 click(btn('YTD')); await sleep(40);
 // conditional formatting logic on the DSR column (monthly)
 const ths = Array.from(document.querySelectorAll('thead th')).map((t) => t.textContent.trim());
@@ -163,10 +169,10 @@ for (const t of ['Issues', 'Operational', 'CX', 'Customers']) await cw(t);
 await cw('Issues'); await cw('Operational');
 p = txt();
 check('portfolio issues: top merchants per issue', p.includes('Which merchants'));
-check('portfolio issues: real parcel tables, counts match the independent pull (fake / RTO / lost / damaged / compensation)', [['Fake attempts', XC.pf.F], ['RTO without attempt', XC.pf.R], ['Lost parcels', XC.pf.L], ['Damaged parcels', XC.pf.D], ['Compensation', XC.pf.C]].every(([t, n]) => p.includes(t + ' (' + n0(n) + ')')) && !/SAMPLE|sample data/i.test(p), [XC.pf.F, XC.pf.R, XC.pf.L, XC.pf.D, XC.pf.C].join('/'));
-check('portfolio: long list is paged (RTO shows 50, rest behind Show more)', Array.from(document.querySelectorAll('button')).some((b) => /^Show 50 more \(/.test(b.textContent.trim())));
+cmCheck('portfolio issues: real parcel tables, counts match the independent pull (fake / RTO / lost / damaged / compensation)', [['Fake attempts', XC.pf.F], ['RTO without attempt', XC.pf.R], ['Lost parcels', XC.pf.L], ['Damaged parcels', XC.pf.D], ['Compensation', XC.pf.C]].every(([t, n]) => p.includes(t + ' (' + n0(n) + ')')) && !/SAMPLE|sample data/i.test(p), [XC.pf.F, XC.pf.R, XC.pf.L, XC.pf.D, XC.pf.C].join('/'));
+cmCheck('portfolio: long list is paged (RTO shows 50, rest behind Show more)', Array.from(document.querySelectorAll('button')).some((b) => /^Show 50 more \(/.test(b.textContent.trim())));
 await cw('CX'); p = txt();
-check('portfolio CX: real tickets (' + XC.pf.tickets + ') from public.freshdesk_tickets_enriched, merchant-link caveat shown', p.includes(n0(XC.pf.tickets)) && p.includes('Only about half of all tickets') && !/coming soon/i.test(p.slice(p.indexOf('Tickets'))), String(XC.pf.tickets));
+cmCheck('portfolio CX: real tickets (' + XC.pf.tickets + ') from public.freshdesk_tickets_enriched, merchant-link caveat shown', p.includes(n0(XC.pf.tickets)) && p.includes('Only about half of all tickets') && !/coming soon/i.test(p.slice(p.indexOf('Tickets'))), String(XC.pf.tickets));
 await cw('Customers'); p = txt();
 check('portfolio: Customers tab shows consignee scores (or says they are not loaded yet)', (/Total parcels/.test(p) && /High consignees/.test(p) && /Delivered share/.test(p)) || p.includes('Consignee scores are not loaded yet'));
 check('portfolio overview has no Opportunities tab; Customers is a main tab next to Issues', !btn('Opportunities') && !!btn('Customers') && !btn('Merchants & customers') && !!btn('Analysis') && !!btn('Debugger') && !!btn('Issues'));
@@ -215,15 +221,15 @@ check('merchant: no month dropdown, calendar range instead', document.querySelec
 for (const t of ['Comparison', 'Current month overview', 'Overall overview', 'Issues', 'CX', 'Operational', 'Customers', 'Opportunities']) await cw(t);
 check('merchant: sample tabs still render', errors.length === 0, errors.slice(0, 2).join(' | '));
 await cw('Issues'); await cw('Operational'); p = txt();
-check('merchant parcel tables: real counts (Trend Hub) and no sample wording', [['Fake attempts', XC.th.F], ['RTO without attempt', XC.th.R], ['Lost parcels', XC.th.L], ['Damaged parcels', XC.th.D], ['Compensation', XC.th.C]].every(([t, n]) => p.includes(t + ' (' + n0(n) + ')')) && p.includes(XC.th_first_L[0]) && !/SAMPLE|sample data/i.test(p), [XC.th.F, XC.th.R, XC.th.L, XC.th.D, XC.th.C].join('/'));
-{
+cmCheck('merchant parcel tables: real counts (Trend Hub) and no sample wording', [['Fake attempts', XC.th.F], ['RTO without attempt', XC.th.R], ['Lost parcels', XC.th.L], ['Damaged parcels', XC.th.D], ['Compensation', XC.th.C]].every(([t, n]) => p.includes(t + ' (' + n0(n) + ')')) && p.includes(XC.th_first_L[0]) && !/SAMPLE|sample data/i.test(p), [XC.th.F, XC.th.R, XC.th.L, XC.th.D, XC.th.C].join('/'));
+if (CMOK) {
   const inp = Array.from(document.querySelectorAll('input')).find((i) => i.placeholder === 'Tracking #');
   setInput(inp, XC.th_first_F[0]); await sleep(120);
   check('table filter narrows the list (Fake attempts: 1 of ' + XC.th.F + ')', txt().includes('(1 of ' + XC.th.F + ')'), '');
   setInput(Array.from(document.querySelectorAll('input')).find((i) => i.placeholder === 'Tracking #'), ''); await sleep(60);
 }
 await cw('CX'); p = txt();
-check('merchant CX: ' + XC.th.tickets + ' real tickets, opened / pending / compensation tables', p.includes(n0(XC.th.tickets)) && p.includes('Opened tickets') && p.includes('Pending tickets') && p.includes('Tickets with compensation') && !/SAMPLE|sample data/i.test(p), String(XC.th.tickets));
+cmCheck('merchant CX: ' + XC.th.tickets + ' real tickets, opened / pending / compensation tables', p.includes(n0(XC.th.tickets)) && p.includes('Opened tickets') && p.includes('Pending tickets') && p.includes('Tickets with compensation') && !/SAMPLE|sample data/i.test(p), String(XC.th.tickets));
 await cw('Customers'); p = txt();
 check('merchant: Customers tab shows consignee scores (or says they are not loaded yet)', (/Total parcels/.test(p) && /Bad consignees/.test(p)) || p.includes('Consignee scores are not loaded yet') || p.includes('No parcels with a confirmed delivery date'));
 { const CS = fs.existsSync('data/consignee_scores.json') ? JSON.parse(fs.readFileSync('data/consignee_scores.json', 'utf8')) : null, rr = CS && CS.p['ImbeR25m9'];
@@ -270,7 +276,7 @@ await openViaId(sid);
 {
   const acc = Array.from(document.querySelectorAll('div')).find((d) => /^Account/.test(d.textContent) && d.querySelector('[aria-label="How this is calculated"]') && d.children.length <= 4);
   acc.querySelector('[aria-label="How this is calculated"]').click(); await sleep(60);
-  check('sub-account info icon shows the main account id', txt().includes('Main account ID: Y4yw4ZQkuXWkSCkMN'), (txt().match(/This is a sub-account.{0,60}/) || [''])[0]);
+  check('sub-account info icon shows the main account id', txt().includes('Main account ID: ' + (EX.sub[3] || 'Y4yw4ZQkuXWkSCkMN')), (txt().match(/This is a sub-account.{0,60}/) || [''])[0]);
 }
 check('sub-account merchant (' + sname + ') shows "Sub-account of ..."', /Account\s*Sub-account of/.test(txt()), (txt().match(/Account\s*Sub-account of.{0,40}/) || [''])[0]);
 await backToTracker();
@@ -305,7 +311,7 @@ const tabBtn = (t) => Array.from(document.querySelectorAll('button')).find((b) =
 const showList = async (v) => { setSel(listSel(), v); await sleep(120); };
 check('the VP lands on the VP screen with the level bar', landedOnVp);
 click(btn('VP')); await sleep(150); p = txt();
-check('VP screen: Sameh Shaheen, 5 segments / 9 team leaders / 49 AMs / 22 sales, head tabs: Totals + the five segments', p.includes('Sameh Shaheen') && /5 segments · 9 team leaders · 49 AMs · 22 sales/.test(p) && tabsNow().join('|') === 'Key Accounts|Growth Fashion|Growth General Trade|Growth Cosmetics|Startups' && !!tabBtn('Totals'), tabsNow().join('|'));
+check('VP screen: Sameh Shaheen, 5 segments / ' + PAYLOAD.org.tls.length + ' team leaders / ' + PAYLOAD.org.ams.length + ' AMs / ' + PAYLOAD.org.sales.length + ' sales, head tabs: Totals + the five segments', p.includes('Sameh Shaheen') && p.includes('5 segments · ' + PAYLOAD.org.tls.length + ' team leaders · ' + PAYLOAD.org.ams.length + ' AMs · ' + PAYLOAD.org.sales.length + ' sales') && tabsNow().join('|') === 'Key Accounts|Growth Fashion|Growth General Trade|Growth Cosmetics|Startups' && !!tabBtn('Totals'), tabsNow().join('|'));
 check('VP and Heads are separate tabs in the view level bar', pillsNow().join('|') === 'VP|Heads|Team leaders|Sales|AMs', pillsNow().join('|'));
 const secs = () => Array.from(document.querySelectorAll('h2')).map((x) => x.textContent.trim()); const six = (t) => secs().findIndex((x) => x.startsWith(t));
 check('sections in order: Pickups, ASP, Retention, Activity analysis, Top 10 and Bottom 10 (no Main view, Base or Activity section)', six('Pickups') >= 0 && six('Pickups') < six('ASP') && six('ASP') < six('Retention') && six('Retention') < six('Activity analysis') && six('Activity analysis') < six('Top 10 and Bottom 10') && !p.includes('Main view') && six('Base') < 0 && six('Activity') === six('Activity analysis'), secs().join('|'));
@@ -316,7 +322,7 @@ const standCheck = (E, tag) => {
   check(tag + ' ASP section: ASP target, Current ASP ' + tl(E.asp, 1) + ', Gap', q.includes('ASP target') && q.includes('Current ASP') && q.includes(tl(E.asp, 1)) && q.includes('Gap'));
   check(tag + ' retention section: Retention target, Current retention ' + tl(E.retention * 100, 1) + '%', q.includes('Retention target') && q.includes('Current retention') && q.includes(tl(E.retention * 100, 1) + '%'));
   check(tag + ' fresh sales: one "Fresh sales pickups" card (' + n0(E.fresh) + ') and no "Fresh sales (new pickups)" card', (q.match(/Fresh sales pickups/g) || []).length === 1 && q.includes(n0(E.fresh)) && !q.includes('Fresh sales (new pickups)'));
-  check(tag + ' activity analysis: total portfolio ' + n0(E.portfolio) + ', total pickups ' + n0(E.pickups) + ', active ' + n0(E.active), (() => { const a = q.indexOf('Activity analysis'), t2 = q.indexOf('Top 10 and Bottom 10'); const seg = q.slice(a, t2); return seg.includes('Total portfolio' + n0(E.portfolio)) && seg.includes('Total pickups' + n0(E.pickups)) && seg.includes('Active merchants' + n0(E.active)); })());
+  check(tag + ' activity analysis: total portfolio ' + n0(E.portfolio) + ', total pickups ' + n0(E.mtdAll) + ', active ' + n0(E.active), (() => { const a = q.indexOf('Activity analysis'), t2 = q.indexOf('Top 10 and Bottom 10'); const seg = q.slice(a, t2); return seg.includes('Total portfolio' + n0(E.portfolio)) && seg.includes('Total pickups' + n0(E.mtdAll)) && seg.includes('Active merchants' + n0(E.active)); })());
 };
 
 // every target KPI has its own top / bottom view, the dropdown holds all of them, and the default is the pickups target
@@ -337,6 +343,14 @@ standCheck(EL.all, 'VP');
 const LV = window.PORTAL_CONFIG.live, LVI = Object.fromEntries(LV.cols.map((c, i) => [c, i])), LVR = new Map(LV.rows.map((r) => [r[0], r]));
 const liveSumOf = (ids, k) => ids.reduce((a, id) => a + (LVR.has(id) ? LVR.get(id)[LVI[k]] : 0), 0);
 const idsOfAms = (names) => names.flatMap((n) => PAYLOAD.data.ams[n].merchants.map((m) => m.id));
+const SALES_X = ((PAYLOAD.data.salesExtra || {}).merchants || []);                       // sales reps' merchants in no AM portfolio
+const scopeIds = (amNames, salesList, vp) => {   // a leadership scope: AM portfolios + the merchants of its sales reps (+ VP-only and every sales merchant for the VP)
+  const known = new Set(Object.values(PAYLOAD.data.ams).flatMap((a) => a.merchants.map((m) => m.id)).concat(Object.values(PAYLOAD.data.vpExtra || {}).flatMap((g) => g.merchants.map((m) => m.id)), SALES_X.map((m) => m.id)));
+  const out = new Set(idsOfAms(amNames));
+  salesList.forEach((x) => (x.newList || []).concat(x.cohortList || [], x.reactList || []).forEach((l) => { if (known.has(l[0])) out.add(l[0]); }));
+  if (vp) Object.values(PAYLOAD.data.vpExtra || {}).flatMap((g) => g.merchants).concat(SALES_X).forEach((m) => out.add(m.id));
+  return [...out];
+};
 const liveBox = () => document.querySelector('[data-testid="live-section"]');
 const liveCheck = (tag, ids) => {
   const b = liveBox(); const t = b ? b.textContent : '';
@@ -347,7 +361,7 @@ const liveCheck = (tag, ids) => {
 {
   const h2 = Array.from(document.querySelectorAll('h2')).map((x) => x.textContent.trim());
   check('VP: the Live section comes first, before Pickups, ASP and Retention', h2[0] === 'Live' && h2.indexOf('Live') < h2.indexOf('Pickups'), h2.slice(0, 4).join('|'));
-  const vpIds = idsOfAms(Object.keys(PAYLOAD.data.ams));
+  const vpIds = scopeIds(Object.keys(PAYLOAD.data.ams), PAYLOAD.org.sales, true);   // the VP also counts Box / no-segment merchants and every sales merchant
   liveCheck('VP', vpIds);
   check('VP Live: the clock line names the newest row of the table', /Snapshot · Today 23:50/.test(document.querySelector('[data-testid="live-clock"]').textContent) || /Live · Today 23:50/.test(document.querySelector('[data-testid="live-clock"]').textContent), document.querySelector('[data-testid="live-clock"]').textContent);
   click(btn('Yesterday')); await sleep(80);
@@ -371,11 +385,40 @@ check('VP: no heads table any more, tabs instead', !Array.from(document.querySel
 { // activity analysis: every card is clickable and opens the merchants behind it with business id, name, segment and AM
   const showBtn = (label) => Array.from(document.querySelectorAll('button')).find((x) => x.getAttribute('aria-label') === 'Show the merchants behind ' + label);
   const listCount = () => { const r = document.querySelector('[data-testid="act-list"]'); const m = r && r.querySelector('h3').textContent.match(/([\d,]+) merchants/); return m ? Number(m[1].replace(/,/g, '')) : null; };
-  const cnt = {}; const labels = ['Total portfolio', 'Total pickups', 'Active merchants', 'Net change', 'New merchants', 'Growers', 'Droppers', 'Stable', 'Churned', 'New'];
+  const cnt = {}; const labels = ['Total portfolio', 'Total pickups', 'Active merchants', 'Net change', 'New merchants', 'Growers', 'Droppers', 'Stable', 'Churned', 'New', 'Reactivations'];
   for (const l of labels) { click(showBtn(l)); await sleep(60); cnt[l] = listCount(); click(showBtn(l)); await sleep(30); }
-  check('activity analysis: all ten cards are clickable and open a merchant list', labels.every((l) => cnt[l] != null && cnt[l] >= 0), JSON.stringify(cnt));
-  check('activity analysis: Growers + Droppers + Stable + Churned + New = Total portfolio ' + n0(EL.all.portfolio), cnt.Growers + cnt.Droppers + cnt.Stable + cnt.Churned + cnt.New === EL.all.portfolio && cnt['Total portfolio'] === EL.all.portfolio, JSON.stringify(cnt));
+  check('activity analysis: all eleven cards are clickable and open a merchant list', labels.every((l) => cnt[l] != null && cnt[l] >= 0), JSON.stringify(cnt));
+  check('activity analysis: Growers + Droppers + Stable + Churned + New + Reactivations = Total portfolio ' + n0(EL.all.portfolio), cnt.Growers + cnt.Droppers + cnt.Stable + cnt.Churned + cnt.New + (cnt.Reactivations || 0) === EL.all.portfolio && cnt['Total portfolio'] === EL.all.portfolio, JSON.stringify(cnt));
   check('activity analysis: active merchants list = ' + n0(EL.all.active), cnt['Active merchants'] === EL.all.active);
+  { // portfolio from public.businesses, reactivations, and the VP-only Box / no-segment merchants (roster_rows.json = the pull: scope 'am' / 'vp')
+    const RR = JSON.parse(fs.readFileSync(new URL('../data/roster_rows.json', import.meta.url), 'utf8'));
+    const amRows = RR.filter((r) => r[8] !== 'vp' && r[8] !== 'sales'), vpRows = RR.filter((r) => r[8] === 'vp'), slRows = RR.filter((r) => r[8] === 'sales');
+    const allM = Object.values(PAYLOAD.data.ams).flatMap((a) => a.merchants).concat(Object.values(PAYLOAD.data.vpExtra || {}).flatMap((g) => g.merchants), SALES_X);
+    check('portfolio = merchants of the AMs in public.businesses (' + n0(amRows.length) + ' AM merchants) + the VP-only merchants (' + n0(vpRows.length) + ') + the sales reps\' merchants in no AM portfolio (' + n0(slRows.length) + ')', Object.values(PAYLOAD.data.ams).reduce((a, x) => a + x.merchants.length, 0) === amRows.length && cnt['Total portfolio'] === amRows.length + vpRows.length + slRows.length);
+    const CMI = Number(PAYLOAD.data.asOf.slice(5, 7)) - 1, pk = (r, i) => Number(r[6].split(';')[i].split(',')[3]);
+    // 25th-to-25th months: reactivation = not new, no pickup from the 25th of two months ago to the 24th of last month (daily pack 1st..24th of last month
+    // + data/prev_window_active.json for the 25th..end of two months ago), pickups since the 25th of last month, active before (first pickup before the window, or an earlier month)
+    const NEWIDS = new Set(allM.filter((m) => m.newThisMonth).map((m) => m.id)), PWA = new Set(JSON.parse(fs.readFileSync(new URL('../data/prev_window_active.json', import.meta.url), 'utf8')));
+    const NF_ = PAYLOAD.data.newFrom, PW0 = (() => { const d = new Date(NF_ + 'T00:00:00Z'); d.setUTCMonth(d.getUTCMonth() - 1); return d.toISOString().slice(0, 10); })();
+    const D0_ = new Date(PAYLOAD.data.asOf.slice(0, 8) + '01T00:00:00Z'); D0_.setUTCMonth(D0_.getUTCMonth() - 1); const NFI_ = Math.round((new Date(NF_ + 'T00:00:00Z') - D0_) / 864e5);
+    const dsum = (r, a, b) => r[7].split(';').slice(a, b).reduce((x, d) => x + Number(d.split(',')[3]), 0);
+    const before = (r) => (r[4] && r[4] < PW0) || r[6].split(';').slice(0, CMI - 1).some((x) => Number(x.split(',')[3]) > 0);
+    const expR = RR.filter((r) => !NEWIDS.has(r[0]) && dsum(r, NFI_) > 0 && dsum(r, 0, NFI_) === 0 && !PWA.has(r[0]) && before(r)).map((r) => r[0]);
+    const flagged = allM.filter((m) => m.reactivated).map((m) => m.id);
+    check('reactivation flag (25th-to-25th months) = no pickup in the previous window, pickups since the 25th of last month, active before (' + expR.length + ' merchants, from the raw monthly packs)', flagged.length === expR.length && expR.every((i) => flagged.includes(i)));
+    const expRC = allM.filter((m) => m.reactivated && !m.newThisMonth).length;
+    check('VP Reactivations card = reactivated merchants that are not new (' + expRC + ')', cnt.Reactivations === expRC, String(cnt.Reactivations));
+    check('reactivated merchants count in the totals: Total pickups includes their ' + n0(allM.filter((m) => m.reactivated).reduce((a, m) => a + m.mtd, 0)) + ' pickups', cnt['Total pickups'] != null && EL.all.mtdAll === allM.reduce((a, m) => a + m.mtd, 0));
+    // new-merchant window: a new merchant (first pickup from the 25th of last month) is measured from that day; the raw daily pack starts on the 1st of last month
+    const NF = PAYLOAD.data.newFrom, D0 = new Date(PAYLOAD.data.asOf.slice(0, 8) + '01T00:00:00Z'); D0.setUTCMonth(D0.getUTCMonth() - 1);
+    const NFI = Math.round((new Date(NF + 'T00:00:00Z') - D0) / 864e5), sinceNF = (r) => r[7].split(';').slice(NFI).reduce((a, d) => a + Number(d.split(',')[3]), 0);
+    const newM = allM.filter((m) => m.newThisMonth), rawById = Object.fromEntries(RR.map((r) => [r[0], r]));
+    check('new merchants are measured from ' + NF + ': pickups = raw daily pickups from that day (' + newM.length + ' merchants, ' + n0(newM.reduce((a, m) => a + m.mtd, 0)) + ' pickups)', newM.length > 0 && newM.every((m) => m.mtd === sinceNF(rawById[m.id])) && newM.every((m) => !m.jd || m.jd >= NF));
+    check('a new merchant\'s pickups before the 1st count in the total pickups (' + n0(newM.reduce((a, m) => a + (m.preNew || 0), 0)) + ')', EL.all.mtdAll === allM.reduce((a, m) => a + m.mtd, 0) && newM.some((m) => m.preNew > 0));
+    const vpSegs = new Set(vpRows.map((r) => r[3] === 'Box' ? 'Box' : (r[3] == null || r[3] === 'Non') ? 'No segment' : 'Other segments'));
+    check('VP-only merchants are Box / no segment / other segments only, and only active ones (pickups this month)', vpRows.every((r) => !['Key-Account', 'Growth-Fashion', 'Growth-Cosmetics', 'Growth-General-Trade', 'Startups'].includes(r[3]) && (pk(r, CMI) > 0 || sinceNF(r) > 0)) && [...vpSegs].every((g) => ['Box', 'No segment', 'Other segments'].includes(g)));
+    const vt = txt(); check('VP segment table lists Box and No segment like the other segments', vt.includes('Box') && vt.includes('No segment'));
+  }
   click(showBtn('Growers')); await sleep(80);
   const hdr = Array.from(document.querySelectorAll('[data-testid="act-list"] thead th')).map((x) => x.textContent.trim()).join('|');
   check('merchant list columns start with Business ID | Merchant | Segment | Account manager', hdr.startsWith('Business ID|Merchant|Segment|Account manager|'), hdr);
@@ -421,7 +464,7 @@ standCheck(EL['Growth - Fashion'], 'Growth Fashion tab');
 click(btn('Team leaders')); await sleep(150);
 setSel(entSel(), 't4'); await sleep(200); p = txt();
 { const mo = Array.from(document.querySelector('select[aria-label="Team member"]').options).map((o) => o.textContent).join('|'); check('team leader screen: Ahmed Saleh with a Team member drop-down holding his AMs and sales', p.includes('Ahmed Saleh') && ['Farha Aly Saad', 'Mayar Adel', 'Abdelrhman Salman', 'Ahmed Sayed Ahmed', 'Samia Tarek'].every((n) => mo.includes(n)), mo); }
-{ const names = PAYLOAD.org.ams.filter((a) => a.tlId === 't4').map((a) => a.name); check('TL Ahmed Saleh: the Live section is above the Pickups cards', Array.from(document.querySelectorAll('h2'))[0].textContent.trim() === 'Live'); liveCheck('TL Ahmed Saleh', idsOfAms(names)); }
+{ const names = PAYLOAD.org.ams.filter((a) => a.tlId === 't4').map((a) => a.name); check('TL Ahmed Saleh: the Live section is above the Pickups cards', Array.from(document.querySelectorAll('h2'))[0].textContent.trim() === 'Live'); liveCheck('TL Ahmed Saleh', scopeIds(names, PAYLOAD.org.sales.filter((x) => x.tlId === 't4'), false)); }
 standCheck(EL.t4, 'TL Ahmed Saleh'); await listCheck(EL.t4, 'TL Ahmed Saleh', ['pickups-growth', 'asp-growth']);
 { // the layer above the business level: a team member picked in the drop-down opens that person's details without leaving the screen
   const pick = async (n) => { const m = document.querySelector('select[aria-label="Team member"]'); setSel(m, Array.from(m.options).find((o) => o.textContent === n).value); await sleep(250); };
@@ -455,12 +498,14 @@ click(btn('Sales')); await sleep(150);
   p = txt();
   const zin = JSON.parse(fs.readFileSync(new URL('../data/org_final.json', import.meta.url), 'utf8')).sales.find((x) => x.name === 'Zinab Ayman');
   const mrows = () => Array.from(document.querySelectorAll('tbody tr')).filter((x) => x.querySelectorAll('td').length === 9);
-  const nm = zin.a.newMerchants, nc = zin.cohort ? zin.cohort : zin.a.cohort, nAct = zin.a.cohort - zin.a.cohortChurned;
+  const nm = zin.a.newMerchants, nc = zin.cohort ? zin.cohort : zin.a.cohort, nAct = zin.a.cohort - zin.a.cohortChurned, nr = (zin.reactList || []).length;
   const hd = Array.from(document.querySelectorAll('thead th')).map((x) => x.textContent.replace(/[▲▼]/g, '').trim()).join('|');
   check('sales view = AM layout: achievement bar, ASP + churn + current-achievement cards, headline stats, merchant detail table', p.includes('Zinab Ayman') && p.includes('Pickups achievement vs. monthly target') && ['Monthly new-pickups target', 'New pickups so far', 'Daily average', 'Run rate', 'ASP target', 'Current ASP', 'Gap', 'Churn target', 'Current churn'].every((x) => p.includes(x)) && !p.includes('Required daily avg') && p.includes('Merchant detail') && !p.includes('Scorecard weights'), '');
   check('sales view table columns: Merchant | MTD avg daily | Last month avg daily | Delta | GR % | MTD total volume | Last month total volume | Run rate | Status', hd.startsWith('Merchant|MTD avg daily|Last month avg daily|Delta|GR %|MTD total volume|Last month total volume|Run rate|Status'), hd);
-  check('sales view: Zinab Ayman has ' + nm + ' new + ' + zin.a.cohort + ' last-month merchants in the table; New / Active / Churned cards = ' + nm + ' / ' + nAct + ' / ' + zin.a.cohortChurned, mrows().length === nm + zin.a.cohort && p.includes(fixedP(zin.a.cohortChurned / zin.a.cohort, 1) + '%'), String(mrows().length));
-  check('sales target 2,000 new pickups, ASP target 121, Startups churn target <= 25%', p.includes('2,000') && p.includes('121.0') && p.includes('≤ 25.0%'));
+  check('sales view: Zinab Ayman has ' + nm + ' new + ' + zin.a.cohort + ' last-month merchants + ' + nr + ' reactivations in the table; New / Active / Churned cards = ' + nm + ' / ' + nAct + ' / ' + zin.a.cohortChurned, mrows().length === nm + zin.a.cohort + nr && nr === zin.a.reactMerchants && p.includes(fixedP(zin.a.cohortChurned / zin.a.cohort, 1) + '%'), String(mrows().length));
+  { const SR = JSON.parse(fs.readFileSync(new URL('../data/sales_rows_fp.json', import.meta.url), 'utf8')).filter((x) => x[1].trim().toLowerCase() === 'zinab ayman' && x[0] !== 'C');
+    check('sales new pickups = new merchants + reactivations from the raw pull (' + n0(SR.reduce((a, x) => a + x[5], 0)) + ')', zin.a.newPicked === SR.reduce((a, x) => a + x[5], 0) && zin.a.reactPicked === SR.filter((x) => x[0] === 'R').reduce((a, x) => a + x[5], 0)); }
+  check('sales target ' + n0(zin.t.newPickups) + ' new pickups, ASP target ' + zin.t.asp + (zin.t.churn != null ? ', churn target' : ' (no churn target this month)'), p.includes(n0(zin.t.newPickups)) && p.includes(Number(zin.t.asp).toFixed(1)) && (zin.t.churn == null || p.includes('≤ ' + (zin.t.churn * 100).toFixed(1) + '%')));
   { const r = mrows().find((x) => x.textContent.includes(zin.cohortList[0][1])); const c = Array.from(r.querySelectorAll('td')).map((x) => x.textContent.trim()); const x = zin.cohortList[0];
     check('last month\'s merchant row: MTD total ' + n0(x[3]) + ' vs last month total ' + n0(x[6]) + ', MTD avg daily = MTD ÷ ' + PAYLOAD.data.wdElapsed + ' working days', c[5] === n0(x[3]) && c[6] === n0(x[6]) && c[1] === (x[3] / PAYLOAD.data.wdElapsed).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 }), c.join(' | ')); }
   { const r = mrows().find((x) => x.textContent.includes(zin.newList[0][1])); const c = Array.from(r.querySelectorAll('td')).map((x) => x.textContent.trim());
@@ -470,21 +515,21 @@ click(btn('Sales')); await sleep(150);
   check('Business ID filter narrows the sales table to one merchant', mrows().length === 1, someId);
   setInput(Array.from(document.querySelectorAll('input')).find((i) => i.placeholder === 'Business ID'), ''); await sleep(60);
   setInput(Array.from(document.querySelectorAll('input')).find((i) => i.placeholder === 'Business name'), zin.cohortList[1][1].slice(0, 4)); await sleep(100);
-  check('Business name filter narrows the sales table', mrows().length > 0 && mrows().length < nm + zin.a.cohort);
+  check('Business name filter narrows the sales table', mrows().length > 0 && mrows().length < nm + zin.a.cohort + nr);
   setInput(Array.from(document.querySelectorAll('input')).find((i) => i.placeholder === 'Business name'), ''); await sleep(60);
   click(mrows()[0]); await sleep(60);
   check('clicking a sales row opens its detail (Business ID, first pickup)', txt().includes('Business ID:') && txt().includes('This month so far'));
   click(btn('ASP')); await sleep(80);
   { const t2 = txt(), hd2 = Array.from(document.querySelectorAll('thead th')).map((x) => x.textContent.replace(/[▲▼]/g, '').trim()).join('|');
     check('sales ASP view = the AM ASP view: same summary cards and gap-contribution table, no interpretation or how-to', ['Total revenues', 'Delivered parcels', 'Portfolio ASP', 'Net ASP gap'].every((x) => t2.includes(x)) && !t2.includes('Business interpretation') && !t2.includes('How to read this table') && hd2.startsWith('Merchant|Parcelsdelivered|Merchant ASPEGP / parcel|Parcel Share') && hd2.includes('Merchant Group') && !hd2.includes('Shipping ASP') && !hd2.includes('VAS ASP'), hd2);
-    const allm = zin.newList.concat(zin.cohortList).filter((r) => r[4] > 0), D2 = allm.reduce((x, r) => x + r[4], 0), R2 = allm.reduce((x, r) => x + r[5], 0);
+    const allm = zin.newList.concat(zin.cohortList, zin.reactList || []).filter((r) => r[4] > 0), D2 = allm.reduce((x, r) => x + r[4], 0), R2 = allm.reduce((x, r) => x + r[5], 0);
     check('sales ASP view: total revenues ' + n0(R2) + ', delivered parcels ' + n0(D2) + ', portfolio ASP ' + tl(R2 / D2, 2), t2.includes(n0(R2)) && t2.includes(n0(D2)) && t2.includes(tl(R2 / D2, 2)), '');
     const aspTr = Array.from(document.querySelectorAll('tbody tr')).filter((x) => x.querySelectorAll('td').length === 8), gsum = aspTr.length; check('sales ASP view: one row per merchant with delivered parcels', gsum === allm.length, gsum + ' vs ' + allm.length);
     const before = document.querySelectorAll('tbody tr').length; click(aspTr[0]); await sleep(60);
     check('sales ASP view: clicking a row opens no details', document.querySelectorAll('tbody tr').length === before && !txt().includes('In simple words')); }
   click(btn('Pickups')); await sleep(60);
   { const tv = txt();
-    check('sales view has the AM cards: Growers, Droppers, Stable, Churned, New, adding up to all merchants', ['Growers', 'Droppers', 'Stable', 'Churned', 'New'].every((x) => tv.includes(x)) && tv.includes('growers, droppers, stable, churned, new (adds up to'));
+    check('sales view has the AM cards: Growers, Droppers, Stable, Churned, New, Reactivations, adding up to all merchants', ['Growers', 'Droppers', 'Stable', 'Churned', 'New', 'Reactivations'].every((x) => tv.includes(x)) && tv.includes('growers, droppers, stable, churned, new, reactivations (adds up to'));
     const nb = Array.from(document.querySelectorAll('tbody button')).find((b) => b.title === 'Open merchant profile');
     check('sales table: merchant names open the merchant profile, like the AM view', !!nb);
     if (nb) { click(nb); await waitFor(() => /Back to the sales view/.test(txt()), 8000);
@@ -509,12 +554,12 @@ click(btn('Sales')); await sleep(120);
 {
   const selS = entSel(); setSel(selS, Array.from(selS.options).find((o) => o.textContent === 'Eman Shehata').value); await sleep(150);
   const ORGJ = JSON.parse(fs.readFileSync(new URL('../data/org_final.json', import.meta.url), 'utf8')); const em = ORGJ.sales.find((x) => x.name === 'Eman Shehata');
-  check('Startups sales: churn target 25% shown', txt().includes('≤ 25.0%'), String(em.t.churn));
+  check('Startups sales: churn target shown when the month has one (' + em.t.churn + ')', em.t.churn == null ? !txt().includes('≤ NaN') : txt().includes('≤ ' + (em.t.churn * 100).toFixed(1) + '%'), String(em.t.churn));
   setSel(entSel(), Array.from(entSel().options).find((o) => o.textContent === 'Merna Atef').value); await sleep(150);
   check('Growth sales (0.86 in the sheet): max churn shown as 14%', txt().includes('≤ 14.0%'));
   const mm = ORGJ.sales.find((x) => x.name === 'Zinab Ayman');
   setSel(entSel(), Array.from(entSel().options).find((o) => o.textContent === 'Zinab Ayman').value); await sleep(150);
-  check('new merchants are defined by first pickup (column header + count from the independent pull)', txt().includes('first pickup') && txt().includes('Merchant detail') && Array.from(document.querySelectorAll('tbody tr')).filter((x) => x.querySelectorAll('td').length === 9).length === mm.a.newMerchants + mm.a.cohort);
+  check('new merchants are defined by first pickup (column header + count from the independent pull)', txt().includes('first pickup') && txt().includes('Merchant detail') && Array.from(document.querySelectorAll('tbody tr')).filter((x) => x.querySelectorAll('td').length === 9).length === mm.a.newMerchants + mm.a.cohort + (mm.reactList || []).length);
 }
 // tracker: weights card gone, ASP toggle
 click(btn('AMs')); await sleep(120);
@@ -567,11 +612,11 @@ click(btn('Profile Overview')); await sleep(60);
   click(Array.from(document.querySelectorAll('button')).find((b) => b.getAttribute('aria-label') === 'Clear filters')); 
   await waitFor(() => txt().includes('Who drives this portfolio'));
   // several matches: the filtered group
-  const frm = rowsAll.filter((r) => r[2] === 'Farha Aly Saad' && r[1].toLowerCase().includes('le'));
+  const frm = rowsAll.filter((r) => r[2] === 'Farha Aly Saad' && (r.length < 9 || r[8] === 'am') && String(r[1] || '').toLowerCase().includes('le'));
   setInput(Array.from(document.querySelectorAll('input')).find((i) => i.placeholder === 'Business name'), 'le');
   check('2+ characters with several matches show the filtered group (' + frm.length + ' merchants)', await waitFor(() => txt().includes('Filtered: ' + frm.length + ' merchants') && txt().includes('Filtered view of ' + frm.length + ' merchants')), String(frm.length));
   p = txt();
-  const expVol = frm.reduce((s2, r) => { const v = r[6].split(';')[9].split(',').map(Number); return s2 + v[0] + v[1] + v[2]; }, 0);
+  const expVol = frm.reduce((s2, r) => { const v = r[6].split(';')[CMN - 1].split(',').map(Number); return s2 + v[0] + v[1] + v[2]; }, 0);
   check('filtered group: October volume = sum of those merchants (' + n0(expVol) + ') and "of ' + frm.length + ' filtered"', p.includes(n0(expVol)) && p.includes('of ' + frm.length + ' filtered'));
   check('filtered group: approximation note for ASR', /ASR for months before October is approximate/.test(p));
   setInput(Array.from(document.querySelectorAll('input')).find((i) => i.placeholder === 'Business name'), 'zzzzqq');
@@ -595,7 +640,7 @@ click(btn('AMs')); await sleep(150);
     if (!Array.from(document.querySelectorAll('button')).some((b) => b.textContent.trim() === 'ASP')) throw new Error('no ASP toggle');
     click(btn('ASP')); await sleep(200);
     const pp = txt();
-    check(am + ': totals, ASP, net gap, median share and group counts match the independent spec calculation', pp.includes(n0(XA.REV)) && pp.includes(n0(XA.DL)) && pp.includes(tl2(XA.P, 2)) && pp.includes(sg2(XA.gap, 2)) && pp.includes(tl2(XA.median * 100, 2) + '%') && Object.entries(XA.counts).every(([g, n]) => pp.includes(g + ': ' + n)), tl2(XA.P, 2) + ' / ' + JSON.stringify(XA.counts));
+    check(am + ': totals, ASP, net gap and group counts match the independent spec calculation (the median-share text was in the removed how-to box)', pp.includes(n0(XA.REV)) && pp.includes(n0(XA.DL)) && pp.includes(tl2(XA.P, 2)) && pp.includes(sg2(XA.gap, 2)) && Object.entries(XA.counts).every(([g, n]) => pp.includes(g + ': ' + n)), tl2(XA.P, 2) + ' / ' + JSON.stringify(XA.counts));
     const f1 = XA.rows[0];
     check(am + ': no How to read this table box', !Array.from(document.querySelectorAll('details')).some((d2) => d2.textContent.startsWith('How to read this table')));
 
@@ -643,9 +688,9 @@ check('Monthly target card shows the sheet target; no card or sentence about a s
   for (const sid of Array.from(entSel().options).map((o) => o.value)) {
     setSel(entSel(), sid); await sleep(35);
     const sl = OJ.sales.find((x) => x.id === sid), q = txt(), pc = tl3((sl.a.newPicked / sl.t.newPickups) * 100, 1);
-    nS++; if (!(q.includes(pc + '% of monthly target') && q.includes(n0(sl.a.newPicked) + ' of ' + n0(sl.t.newPickups) + ' new pickups') && q.includes(pc + '% of the monthly target') && q.includes('New pickups so far') && Array.from(document.querySelectorAll('tbody tr')).filter((x) => x.querySelectorAll('td').length === 9).length === sl.a.newMerchants + sl.a.cohort)) badS.push(sl.name);
+    nS++; if (!(q.includes(pc + '% of monthly target') && q.includes(n0(sl.a.newPicked) + ' of ' + n0(sl.t.newPickups) + ' new pickups') && q.includes(pc + '% of the monthly target') && q.includes('New pickups so far') && Array.from(document.querySelectorAll('tbody tr')).filter((x) => x.querySelectorAll('td').length === 9).length === sl.a.newMerchants + sl.a.cohort + (sl.reactList || []).length)) badS.push(sl.name);
   }
-  check('all ' + nS + ' sales reps: the bar and the current-achievement card show new pickups and % of the monthly target, and the table lists every new and last-month merchant', badS.length === 0, badS.slice(0, 5).join(', '));
+  check('all ' + nS + ' sales reps: the bar and the current-achievement card show new pickups (new merchants + reactivations) and % of the monthly target, and the table lists every new, last-month and reactivated merchant', badS.length === 0, badS.slice(0, 5).join(', '));
 }
 
 // ===================== AUTHORIZATION AND ACCESS LEVELS (who can see whom): only when AUTH_ENABLED is true =====================
@@ -699,8 +744,8 @@ if (AUTH_ON) {
 {
   const zlib = await import('node:zlib');
   const ST = JSON.parse(zlib.gunzipSync(Buffer.from(PAYLOAD.store, 'base64')).toString());
-  const SEGS = ['Key-Account', 'Growth-Fashion', 'Growth-Cosmetics', 'Growth-General-Trade', 'Startups'];
-  const all = []; Object.values(PAYLOAD.data.ams).forEach((a) => a.merchants.forEach((m) => all.push(m)));
+  const SEGS = ['Key-Account', 'Growth-Fashion', 'Growth-Cosmetics', 'Growth-General-Trade', 'Startups', 'Box', 'No segment', 'Other segments'];
+  const all = []; Object.values(PAYLOAD.data.ams).forEach((a) => a.merchants.forEach((m) => all.push(m))); Object.values(PAYLOAD.data.vpExtra || {}).forEach((g) => g.merchants.forEach((m) => all.push(m))); SALES_X.forEach((m) => all.push(m));   // VP scope: AM portfolios + VP-only groups + sales merchants
   const inSeg = all.filter((m) => SEGS.includes(m.seg) && ST.p[m.id] && ST.p[m.id][1]);
   const dayVal = (id, k) => Number(ST.p[id][1].split(';')[k].split(',')[3]) || 0;
   const lastK = ST.p[inSeg[0].id][1].split(';').length - 1;
@@ -717,9 +762,9 @@ if (AUTH_ON) {
   const CO = JSON.parse(fs.readFileSync('data/company_daily.json', 'utf8')).rows, coLast = CO[CO.length - 1];
   const numC = (t) => Number((t.match(/[\d,]+/) || ['0'])[0].replace(/,/g, ''));
   check('VP Daily analysis total volume = all pickups of the company on the last day (' + coLast[0] + ')', numC(card('Total volume')) === coLast[0], card('Total volume'));
-  check('VP Daily analysis other pickups = company total minus the target segments (' + (coLast[0] - expVol) + ')', numC(card('Other pickups')) === coLast[0] - expVol, card('Other pickups'));
+  check('VP Daily analysis other pickups = company total minus the merchants of the VP scope (' + (coLast[0] - expVol) + ')', numC(card('Other pickups')) === coLast[0] - expVol, card('Other pickups'));
   check('VP Daily analysis box pickups = company box pickups (' + coLast[3] + ')', numC(card('Box pickups')) === coLast[3], card('Box pickups'));
-  check('Daily analysis accounts = roster merchants of the 5 segments minus folded sub-accounts (' + expActive + ')', dt.includes(expActive.toLocaleString('en-US') + ' accounts'), (dt.match(/[\d,]+ accounts in/) || [''])[0]);
+  check('VP Daily analysis accounts = merchants of the VP scope (5 segments, Box, no segment) minus folded sub-accounts (' + expActive + ')', dt.includes(expActive.toLocaleString('en-US') + ' accounts'), (dt.match(/[\d,]+ accounts in/) || [''])[0]);
   check('Daily analysis shows all five segments and a Total row', ['Key Accounts', 'Growth Fashion', 'Growth Cosmetics', 'Growth General Trade', 'Startups', 'Total'].every((x) => dt.includes(x)));
   check('Daily analysis: no literal \\u sequences', !/\\u[0-9a-fA-F]{4}/.test(dt));
   check('Daily analysis lists show at most 10 rows until "Show all"', document.querySelectorAll('tbody')[1].querySelectorAll('tr').length <= 10);
@@ -742,7 +787,7 @@ if (AUTH_ON) {
   check('Team leaders Daily analysis stays as is: no company-wide cards', !/Other pickups|Box pickups|whole company/.test(txt()));
   click(btn('Back')); await sleep(200);
   click(btn('Sales')); await sleep(200); click(btn('Daily analysis')); await waitFor(() => /What stands out|no merchants of the target segments/.test(txt()), 8000);
-  check('Sales: Daily analysis opens', /sales · /.test(txt()));
+  check('Sales: Daily analysis opens (or says the rep has no merchants with daily data)', /sales · /.test(txt()) || /no merchants of the target segments with daily data/.test(txt()));
   click(btn('Back')); await sleep(200);
   click(btn('AMs')); await sleep(200); click(btn('Daily analysis')); await waitFor(() => /What stands out/.test(txt()), 8000);
   check('AMs: Daily analysis opens', /Account manager · /.test(txt()));
@@ -772,7 +817,7 @@ if (AUTH_ON) {
     click(btn('Merchants contribution')); await sleep(150);
     check('AM contribution version: Merchant weight, Delta, Achievement %; no GR %, no Below own target', ['Merchant weight', 'Achievement %', 'Delta'].every((x) => heads().some((h) => h.includes(x))) && !heads().some((h) => /GR %|PMTD|Below own target|Target avg daily/.test(h)));
     const amN = entSel().value, rr = bodyRows().map(tdOf).find((c) => c[1] !== '—' && c[5] !== '—' && num(c[1]) > 0);
-    const mm = PAYLOAD.data.ams[amN].merchants.find((x) => x.name === rr[0].replace(/\(no Sep baseline\)/, '').trim()), tgt = mm.monthly.sep * 1.6 / PAYLOAD.data.wdFull;
+    const mm = PAYLOAD.data.ams[amN].merchants.find((x) => x.name === rr[0].replace(/\(no Sep baseline\)/, '').trim()), tgt = mm.monthly[PREVK] * 1.6 / PAYLOAD.data.wdFull;
     check('AM Target version: row values match the independent calculation (target ' + tgt.toFixed(1) + ', achievement ' + Math.round(mm.mtdAvgDaily / tgt * 100) + '%)', rr[1] === tgt.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) && rr[5] === Math.round(mm.mtdAvgDaily / tgt * 100).toLocaleString('en-US') + '%', rr.join(' | '));
     { const idIn = document.querySelector('input[aria-label="Search business ID"]'), nmIn = document.querySelector('input[aria-label="Search business name"]');
       check('AM home has Business ID and Business name search boxes', !!idIn && !!nmIn);

@@ -1,7 +1,7 @@
 """Ingest the raw pages of sql/pull_roster_packs.sql and the result of sql/pull_portfolio_monthly.sql.
 
 Usage: python scripts/ingest_roster.py --pages p1.json p2.json p3.json --portfolio pf.json
-Writes: data/roster_rows.json  [id, name, am, segment, joining_date, last_activity, monthly_pack, daily_pack]
+Writes: data/roster_rows.json  [id, name, am, segment, joining_date, last_activity, monthly_pack, daily_pack, scope]   scope 'am' = AM portfolio, 'vp' = VP-only extra
         data/daily_packs.json  {id: daily_pack}      data/meta_rows.json {id: {w, pid, pn, ns}} (raw website; the domain is taken in build_store)
         data/pf_monthly.json   {am: 10 months x 32 fields}
 """
@@ -18,9 +18,10 @@ if __name__ == '__main__':
     a = ap.parse_args()
     rows, daily, meta, seen = [], {}, {}, set()
     for f in a.pages:
-        for bid, name, am, seg, jd, la, mp, dp, web, pid, pn, ns, *_ in load_rows(f):
+        for bid, name, am, seg, jd, la, mp, dp, web, pid, pn, ns, *rest in load_rows(f):
             assert bid not in seen, bid; seen.add(bid)
-            rows.append([bid, name, am, seg, jd, la, mp, dp]); daily[bid] = dp
+            scope = rest[0] if rest and rest[0] in ('am', 'vp', 'sales') else 'am'      # older pulls have no scope column: all AM portfolio
+            rows.append([bid, name, am, seg, jd, la, mp, dp, scope]); daily[bid] = dp
             m = {}
             if web: m['w'] = web
             if pid: m['pid'] = pid; m['pn'] = pn

@@ -22,6 +22,24 @@ ORG.ams.forEach((a) => {
   });
 });
 const LEAD_ROSTER = new Set(LEAD_ROWS.map((r) => r.id));
+// VP only: merchants outside the five target segments (Box, no segment, other segments) with pickups this month, from DATA.vpExtra.
+// They go through the same per-merchant analysis, so every VP list, card and segment row treats them like the other segments.
+const LEAD_EXTRA_ROWS = [];
+Object.entries(DATA.vpExtra || {}).forEach(([g, grp]) => {
+  analyzeAm({ target: 0, base: grp.merchants.length, merchants: grp.merchants }, DATA.wdFull).merchants.forEach((m) => {
+    const dl = m.aspDlv || 0, rev = m.aspRev || 0, vas = m.aspVas || 0;
+    LEAD_EXTRA_ROWS.push({ ...m, seg: g, amName: m.am || "No account manager", team: null, tlId: null, headId: null, vpOnly: true, dl, rev, asp: dl > 0 ? rev / dl : null, paspP: (m.pDlv || 0) > 0 ? (m.pRev || 0) / m.pDlv : null, vasRev: vas, vasAsp: dl > 0 ? vas / dl : null, gain: (m.td || 0) - (m.ptd || 0) });
+  });
+});
+
+// Sales reps' merchants (new, last month's new, reactivations) that are in no AM portfolio (DATA.salesExtra). They count in the views of the
+// sales rep's team leader and head and in the VP view, through the same per-merchant analysis.
+const SALES_EXTRA_ROWS = [];
+analyzeAm({ target: 0, base: ((DATA.salesExtra || {}).merchants || []).length, merchants: (DATA.salesExtra || {}).merchants || [] }, DATA.wdFull).merchants.forEach((m) => {
+  const dl = m.aspDlv || 0, rev = m.aspRev || 0, vas = m.aspVas || 0, sr = ORG.sales.find((x) => x.name === m.salesRep);
+  SALES_EXTRA_ROWS.push({ ...m, amName: m.am || "No account manager", team: sr ? sr.team : null, tlId: sr ? sr.tlId : null, headId: sr ? sr.headId : null, salesOnly: true, dl, rev, asp: dl > 0 ? rev / dl : null, paspP: (m.pDlv || 0) > 0 ? (m.pRev || 0) / m.pDlv : null, vasRev: vas, vasAsp: dl > 0 ? vas / dl : null, gain: (m.td || 0) - (m.ptd || 0) });
+});
+const LEAD_BY_ID = new Map(LEAD_ROWS.concat(LEAD_EXTRA_ROWS, SALES_EXTRA_ROWS).map((r) => [r.id, r]));
 
 // ---------- permissions ----------
 function parseViewer(key) {
@@ -67,7 +85,11 @@ function leadScope(kind, ent) {
   const mem = orgMembers(kind, ent);
   const names = new Set(mem.ams.map((a) => a.name));
   const sc = orgScore(kind, ent);
-  return { ...mem, rows: LEAD_ROWS.filter((r) => names.has(r.amName)), sc, g: sc.g };
+  const rows = LEAD_ROWS.filter((r) => names.has(r.amName)), seen = new Set(rows.map((r) => r.id));
+  // + the merchants of the scope's sales reps (new, last month's new, reactivations), also when they are in no AM portfolio
+  mem.sales.forEach((s) => (s.newList || []).concat(s.cohortList || [], s.reactList || []).forEach((x) => { const r = LEAD_BY_ID.get(x[0]); if (r && !seen.has(r.id)) { rows.push(r); seen.add(r.id); } }));
+  if (kind === "vp") LEAD_EXTRA_ROWS.concat(SALES_EXTRA_ROWS).forEach((r) => { if (!seen.has(r.id)) { rows.push(r); seen.add(r.id); } });   // the VP also sees Box / no-segment merchants
+  return { ...mem, rows, sc, g: sc.g };
 }
 // where a pickups figure stands against its goal (the monthly target of the targets sheet, factor 1)
 function leadStanding(actual, target, factor) {
@@ -95,7 +117,7 @@ const LEAD_INFO = {
 // Three sections, the same on every view: Pickups, ASP, Retention (Churn for sales reps).
 // `over` lets a screen pass its own pickups numbers (the AM screen has an adjustable working-days input).
 function TargetSections({ sc, kind, over, ent }) {
-  const isSales = kind === "sales";
+  const isSales = kind === "sales" || sc.salesOnly;   // a sales rep, or a team of sales reps only: pickups = new pickups (new merchants + reactivations)
   const p = sc.pickups, a = sc.asp, f = sc.fresh, r = sc.retention, c = sc.churn;
   const actual = over ? over.actual : p.actual, target = over ? over.target : p.target;
   const st = leadStanding(actual, target, 1);
@@ -114,7 +136,7 @@ function TargetSections({ sc, kind, over, ent }) {
         <div className="tt-kpis" style={grid(180)}>
           <OrgCard label={isSales ? "Monthly new-pickups target" : "Monthly pickups target"} info={isSales ? ORG_INFO.newPickups : "The monthly pickups target (for a team: as set for the team)."} value={target ? fmt(target) : "—"} />
           <OrgCard label={isSales ? "New pickups so far" : "Pickups so far"} info={LEAD_INFO.target} value={fmt(actual)} accent={st ? color : undefined} sub={st ? fmt(st.achv * 100, 1) + "% of the monthly target" : "no target"}>{st && <OrgBar pct={Math.min(1, st.achv)} color={color} />}</OrgCard>
-          {f && <OrgCard label="Fresh sales pickups" info="Pickups of new merchants (first pickup in the new-merchant window) owned by the sales reps of this scope." value={fmt(f.actual)} sub={f.target ? fmt((f.actual / f.target) * 100, 1) + "% of " + fmt(f.target) + " target" : "no target"} />}
+          {f && <OrgCard label="Fresh sales pickups" info="Pickups of the new merchants (first pickup in the new-merchant window, counted from the 25th of last month) and the reactivations (no pickup in the previous 25th-to-25th month, back since the 25th of last month; counted from the 25th) owned by the sales reps of this scope." value={fmt(f.actual)} sub={f.target ? fmt((f.actual / f.target) * 100, 1) + "% of " + fmt(f.target) + " target" : "no target"} />}
           <OrgCard label="Daily average" info={LEAD_INFO.daily} value={avgDaily == null ? "—" : fmt(avgDaily, 0)} accent={avgDaily != null && needDaily != null ? (avgDaily >= needDaily ? COLORS.teal : COLORS.coral) : undefined} sub={needDaily != null ? "target pace " + fmt(needDaily, 0) + " per working day" : ""} />
           <OrgCard label="Run rate" info={"Pickups so far + current daily average x remaining working days. " + LEAD_INFO.status} value={projected == null ? "—" : fmt(projected, 0)} accent={projPct != null ? (projPct >= 1 ? COLORS.teal : COLORS.coral) : undefined} sub={projPct != null ? fmt(projPct * 100, 1) + "% of the monthly target" : ""} />
           <OrgCard label="Status" info={LEAD_INFO.status} value={st ? <LeadChip status={st.status} /> : "—"} sub={st ? (st.short > 0 ? fmt(st.short, 0) + " short of the monthly target" : "monthly target reached") : "no target"} />
@@ -200,14 +222,15 @@ function LeadSection({ title, info, children }) {
 // ---------- Activity analysis (month to date) ----------
 // The Daily analysis idea over the whole month so far: every merchant is compared with the same days of last month
 // (growers / droppers at +/-15% GR, as in the AM view). Every card opens the list of merchants behind its number.
-const LEAD_SEG_LABEL = { "Key-Account": "Key Accounts", "Growth-Fashion": "Growth Fashion", "Growth-Cosmetics": "Growth Cosmetics", "Growth-General-Trade": "Growth General Trade", Startups: "Startups" };
+const LEAD_SEG_LABEL = { "Key-Account": "Key Accounts", "Growth-Fashion": "Growth Fashion", "Growth-Cosmetics": "Growth Cosmetics", "Growth-General-Trade": "Growth General Trade", Startups: "Startups", Box: "Box", "No segment": "No segment", "Other segments": "Other segments" };
 const leadSegLabel = (x) => LEAD_SEG_LABEL[x] || "Other";
 const ACT_GROUPS = [
   ["Grower", "Growers", COLORS.teal, "Merchants whose average pickups per working day so far is at least 15% above the same days of last month. A merchant with no pickups in those days and pickups now counts as a grower."],
   ["Dropper", "Droppers", COLORS.coral, "Merchants whose average pickups per working day so far is at least 15% below the same days of last month, and who still have pickups this month."],
   ["Stable", "Stable", COLORS.blue, "Merchants whose GR % is between -15% and +15%."],
   ["Churned", "Churned", COLORS.slate, "Merchants with no pickups yet this month. Provisional until month end."],
-  ["New", "New", COLORS.purple, "Merchants with a first pickup from the 25th of last month up to the 25th of this month."],
+  ["New", "New", COLORS.purple, "Merchants with a first pickup from the 25th of last month up to the 25th of this month. Their pickups, revenue and averages count from the 25th of last month (not from the 1st), and these numbers are part of every total."],
+  ["Reactivation", "Reactivations", COLORS.chart, "Merchants active before, with no pickup in the previous 25th-to-25th month (the 25th of two months ago to the 24th of last month) and pickups again since the 25th of last month; their numbers count from the 25th of last month. Their pickups, revenue and every other number count in the portfolio totals."],
 ];
 function ActCard({ label, info, value, sub, accent, active, onClick, count }) {
   return (
@@ -284,13 +307,13 @@ function ActivityAnalysis({ rows, sc }) {
   return (
     <LeadSection title="Activity analysis" info="Month to date. Every merchant is compared with the same days of last month. Click a card to see the merchants behind it.">
       <div className="tt-kpis" style={grid}>
-        <ActCard label="Total portfolio" info="Merchants assigned to the AMs in this scope." value={fmt(rows.length)} sub="merchants" active={open === "portfolio"} onClick={() => toggle("portfolio")} />
-        <ActCard label="Total pickups" info="Pickups of the portfolio this month so far." value={fmt(g.pickups)} sub={lsgn(net, 0) + " vs the same days of last month"} active={open === "pickups"} onClick={() => toggle("pickups")} />
+        <ActCard label="Total portfolio" info="Merchants assigned to the AMs in this scope (account manager from public.businesses). The VP also sees Box and no-segment merchants that picked up this month." value={fmt(rows.length)} sub="merchants" active={open === "portfolio"} onClick={() => toggle("portfolio")} />
+        <ActCard label="Total pickups" info="Pickups of the portfolio this month so far (every merchant of the scope, reactivations included; for the VP also Box and no-segment merchants). A new merchant counts from the 25th of last month." value={fmt(stats.mtd)} sub={lsgn(net, 0) + " vs the same days of last month"} active={open === "pickups"} onClick={() => toggle("pickups")} />
         <ActCard label="Active merchants" info="Merchants with at least one pickup this month so far." value={fmt(stats.active.length)} sub={pct(stats.active.length)} active={open === "active"} onClick={() => toggle("active")} />
         <ActCard label="Net change" info="Pickups so far minus the pickups of the same days of last month, summed over the merchants." value={lsgn(net, 0)} accent={net >= 0 ? COLORS.teal : COLORS.coral} sub="pickups vs last month" active={open === "net"} onClick={() => toggle("net")} />
-        <ActCard label="New merchants" info={"Merchants with a " + NEW_RULE + "."} value={fmt(stats.newRows.length)} sub={NEW_PHRASE} active={open === "newm"} onClick={() => toggle("newm")} />
+        <ActCard label="New merchants" info={"Merchants with a " + NEW_RULE + ". Their pickups, revenue and averages count from the 25th of last month (not from the 1st), and these numbers are part of every total."} value={fmt(stats.newRows.length)} sub={NEW_PHRASE} active={open === "newm"} onClick={() => toggle("newm")} />
       </div>
-      <div className="tt-kpis" style={grid}>
+      <div className="tt-kpis" style={{ ...grid, gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 150px), 1fr))" }}>   {/* the six groups on one row */}
         {ACT_GROUPS.map(([k, l, c, info]) => <ActCard key={k} label={l} info={info} value={fmt(stats.by[k].length)} accent={c} sub={pct(stats.by[k].length)} active={open === k} onClick={() => toggle(k)} />)}
       </div>
       {cur && <ActMerchantList key={open} title={cur[0]} rows={cur[1]} sortBy={cur[2]} />}
@@ -412,7 +435,7 @@ function LeadShell({ nav, current, children }) {
       <div className="tt-wrap">
         <LevelBar nav={nav} current={current} />
         {children}
-        <div style={{ fontSize: 11.5, color: COLORS.textFaint, marginTop: 8, lineHeight: 1.5 }}>Data as of {ORG.asOf} · targets from October_Targets_2026.xlsx. Pickups are this month so far; ASP, retention and fresh sales use Oct 1–4. New merchants = merchants with a {NEW_RULE} and a sales owner.</div>
+        <div style={{ fontSize: 11.5, color: COLORS.textFaint, marginTop: 8, lineHeight: 1.5 }}>Data as of {ORG.asOf} · targets from the targets table of the month (public.commercial_monthly_targets). Pickups are this month so far (a new merchant from the 25th of last month); ASP and retention use Oct 1–4; fresh sales pickups (new merchants and reactivations) count from the 25th of last month. Team leader, head and VP lists also hold the merchants of their sales reps (new, last month's new, reactivations), also when they are in no AM portfolio. A team of sales reps only shows its fresh-sales numbers under Pickups and ASP. New merchants = merchants with a {NEW_RULE} and a sales owner.</div>
       </div>
     </div>
   );
@@ -540,6 +563,7 @@ function SalesDetailPanel({ s, nav }) {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 430px), 1fr))", gap: 12 }}>
         <RankTable title={"New merchants this month (" + s.newList.length + ")"} list={s.newList.slice(0, 10).map((x) => ({ id: x[0], name: x[1], fp: x[2], picked: x[3], dlv: x[4], rev: x[5] }))} cols={[{ h: "Merchant", v: (r) => r.name }, { h: "First pickup", a: "r", v: (r) => r.fp }, { h: "Pickups", a: "r", v: (r) => fmt(r.picked) }, { h: "ASP", a: "r", v: (r) => (r.dlv ? fmt(r.rev / r.dlv, 1) : "—") }]} note="Top 10 by pickups." />
         <RankTable title={"Last month's new merchants (" + s.cohortList.length + ")"} list={s.cohortList.slice(0, 10).map((x) => ({ id: x[0], name: x[1], oct: x[3], sep: x[6] }))} cols={[{ h: "Merchant", v: (r) => r.name }, { h: "Sep pickups", a: "r", v: (r) => fmt(r.sep) }, { h: "Oct pickups", a: "r", v: (r) => fmt(r.oct) }, { h: "Status", v: (r) => <span style={{ color: r.oct > 0 ? COLORS.teal : COLORS.coral, fontWeight: 600 }}>{r.oct > 0 ? "Active" : "No pickup yet"}</span> }]} note="First 10; no pickup yet is shown first." />
+        {(s.reactList || []).length > 0 && <RankTable title={"Reactivations (" + s.reactList.length + ")"} list={s.reactList.slice(0, 10).map((x) => ({ id: x[0], name: x[1], fp: x[2], picked: x[3] }))} cols={[{ h: "Merchant", v: (r) => r.name }, { h: "First pickup", v: (r) => r.fp }, { h: "Oct pickups", a: "r", v: (r) => fmt(r.picked) }]} note="No pickup from the 25th of two months ago to the 24th of last month, back since the 25th of last month. First 10 by pickups; they count in the new pickups." />}
       </div>
     </div>
   );

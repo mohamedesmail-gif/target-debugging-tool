@@ -3,10 +3,8 @@
 -- Output: (mid, chunk, s, rn)  s = rows joined by '~', fields by '|':
 --   tracking|type|day|assigned_hub|current_hub|pickup_star|delivery_star|current_star|attempts|status|liability|amount|reason
 -- Validation (Trend Hub, Sept): lost 12 = mart, compensation 171,260 = mart, damaged 26 vs 28, fake 591 vs 407, RTO 2,026 vs 5,064 (proxies).
-WITH latest AS (
-  SELECT business_id, account_manager, ROW_NUMBER() OVER (PARTITION BY business_id ORDER BY date DESC) rn
-  FROM mart.v_merchant_monthly_wide WHERE date >= DATE '__OWNER_SINCE__'),
-owner AS (SELECT business_id FROM latest WHERE rn=1 AND account_manager IN (__AM_LIST__)),
+WITH owner AS (SELECT business_id, account_manager_name AS account_manager FROM public.businesses   -- today's owner (public.businesses), AMs of the targets table
+  WHERE account_type = 'merchant' AND account_manager_name IN (__AM_LIST__)),
 iss AS (
   SELECT p.merchant_id mid, 'F' t, p.tracking_number tn, EXTRACT(day FROM p.grey_date) dom, p.assigned_hub_name hub, p.current_hub chub, p.pickup_star_id ps, p.delivery_star_id dst, p.current_star_name cs, NVL(p.total_attempts,0) att, p.current_status st, '' liab, '' amt, '' rsn
   FROM mart.v_parcel_lifecycle p JOIN owner o ON o.business_id = p.merchant_id WHERE p.grey_reason_fake_attempt AND p.grey_date >= DATE '__FROM__' AND p.grey_date < DATE '__TO__'

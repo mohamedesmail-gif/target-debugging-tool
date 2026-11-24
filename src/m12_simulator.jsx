@@ -16,7 +16,7 @@ let SIM_OWNER_MAP = null;
 function simOwners() {
   if (SIM_OWNER_MAP) return SIM_OWNER_MAP;
   const o = {};
-  ORG.sales.forEach((s) => (s.newList || []).concat(s.cohortList || []).forEach((r) => { o[String(r[0])] = { label: s.name + " (sales)", tlId: s.tlId, headId: s.headId }; }));
+  ORG.sales.forEach((s) => (s.newList || []).concat(s.cohortList || [], s.reactList || []).forEach((r) => { o[String(r[0])] = { label: s.name + " (sales)", tlId: s.tlId, headId: s.headId }; }));
   LEAD_ROWS.forEach((r) => { o[String(r.id)] = { label: r.amName + " (AM)", tlId: r.tlId, headId: r.headId }; });
   SIM_OWNER_MAP = o;
   return o;

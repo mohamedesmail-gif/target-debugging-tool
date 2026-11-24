@@ -1,11 +1,26 @@
--- Portfolio monthly pack per account manager: the monthly pack fields summed over the AM's CURRENT merchants for each month (Jan-Oct),
+-- Portfolio monthly pack per account manager: the monthly pack fields summed over the AM's CURRENT merchants (public.businesses) for each month (Jan to the current month),
+-- plus one pack per VP-only group (Box / No segment / Other segments: merchants active this month).
 -- DSR / ASR as SUM(numerator) / SUM(denominator) x 10000. The three merchant-count fields (active / VAS / new merchants) are derived from the
 -- merchant packs by scripts/build_store.py. One row per AM: (account_manager, pfm, pad).
-WITH latest AS (
-  SELECT business_id, account_manager, ROW_NUMBER() OVER (PARTITION BY business_id ORDER BY date DESC) rn
-  FROM mart.v_merchant_monthly_wide WHERE date >= DATE '__OWNER_SINCE__'),
-owner AS (SELECT business_id, account_manager FROM latest WHERE rn=1 AND account_manager IN (__AM_LIST__)),
-months AS (SELECT DATE '2026-01-01' AS d UNION ALL SELECT DATE '2026-02-01' UNION ALL SELECT DATE '2026-03-01' UNION ALL SELECT DATE '2026-04-01' UNION ALL SELECT DATE '2026-05-01' UNION ALL SELECT DATE '2026-06-01' UNION ALL SELECT DATE '2026-07-01' UNION ALL SELECT DATE '2026-08-01' UNION ALL SELECT DATE '2026-09-01' UNION ALL SELECT DATE '2026-10-01'),
+WITH bz AS (SELECT business_id, NULLIF(NULLIF(TRIM(account_manager_name), ''), 'None') AS am, firstpickuppickedupat FROM public.businesses WHERE account_type = 'merchant'),
+seg AS (SELECT business_id, segment FROM (SELECT business_id, segment, ROW_NUMBER() OVER (PARTITION BY business_id ORDER BY date DESC) rn FROM mart.v_merchant_monthly_wide WHERE date >= DATE '__OWNER_SINCE__' AND segment IS NOT NULL) WHERE rn=1),
+cur AS (SELECT w.business_id FROM mart.v_merchant_daily_wide w LEFT JOIN bz ON bz.business_id = w.business_id
+             WHERE w.date BETWEEN DATE '__PREV_FROM__' AND DATE '__TO__'
+             GROUP BY 1
+             HAVING SUM(CASE WHEN w.date >= DATE '__CUR0__' THEN NVL(w.parcels_picked,0) ELSE 0 END) > 0                    -- active this month
+                 OR (SUM(CASE WHEN w.date >= DATE '__NEW_FROM__' THEN NVL(w.parcels_picked,0) ELSE 0 END) > 0             -- or, since the 25th of last month:
+                     AND (MAX(bz.firstpickuppickedupat) >= DATE '__NEW_FROM__'                                                 --   a new merchant
+                          OR (MAX(bz.firstpickuppickedupat) < DATE '__PREV_FROM__'                                             --   or a reactivation (nothing in the previous window)
+                              AND SUM(CASE WHEN w.date < DATE '__NEW_FROM__' THEN NVL(w.parcels_picked,0) ELSE 0 END) = 0)))),
+owner AS (   -- same pool as sql/pull_roster_packs.sql: the AM portfolios, then the VP-only groups (active this month, segment outside the five)
+  SELECT bz.business_id, bz.am AS account_manager FROM bz LEFT JOIN seg ON seg.business_id = bz.business_id
+  WHERE bz.am IN (__AM_LIST__) AND (seg.segment IS NULL OR seg.segment IN ('Key-Account','Growth-Fashion','Growth-Cosmetics','Growth-General-Trade','Startups'))
+  UNION ALL
+  SELECT c.business_id, CASE WHEN seg.segment = 'Box' THEN 'VP · Box' WHEN seg.segment IS NULL OR seg.segment = 'Non' THEN 'VP · No segment' ELSE 'VP · Other segments' END
+  FROM cur c LEFT JOIN bz ON bz.business_id = c.business_id LEFT JOIN seg ON seg.business_id = c.business_id
+  WHERE (seg.segment IS NULL OR seg.segment NOT IN ('Key-Account','Growth-Fashion','Growth-Cosmetics','Growth-General-Trade','Startups'))
+    AND NOT (NVL(bz.am, '') IN (__AM_LIST__) AND seg.segment IS NULL)),
+months AS (SELECT date AS d FROM mart.v_bosta_calendar WHERE EXTRACT(day FROM date) = 1 AND date BETWEEN DATE '2026-01-01' AND DATE '__CUR0__'),
 am_m AS (SELECT o.account_manager, m.d,
        ROUND(SUM(NVL(w.ecomm_pickups,0)))::bigint AS c0,
        ROUND(SUM(NVL(w.fulfillment_pickups,0)))::bigint AS c1,

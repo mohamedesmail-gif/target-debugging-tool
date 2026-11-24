@@ -13,8 +13,8 @@
 //   On risk       no pickup for more than 14 days (looked at inside the data window).
 //   Net impact    growers' gain + droppers' loss + absents' loss against the baseline (an absent merchant loses its whole baseline).
 // ============================================================================
-const DA_SEGS = ["Key-Account", "Growth-Fashion", "Growth-Cosmetics", "Growth-General-Trade", "Startups"];
-const DA_SEG_LABEL = { "Key-Account": "Key Accounts", "Growth-Fashion": "Growth Fashion", "Growth-Cosmetics": "Growth Cosmetics", "Growth-General-Trade": "Growth General Trade", Startups: "Startups" };
+const DA_SEGS = ["Key-Account", "Growth-Fashion", "Growth-Cosmetics", "Growth-General-Trade", "Startups", "Box", "No segment", "Other segments"];   // the last three exist in the VP scope only (DATA.vpExtra)
+const DA_SEG_LABEL = { "Key-Account": "Key Accounts", "Growth-Fashion": "Growth Fashion", "Growth-Cosmetics": "Growth Cosmetics", "Growth-General-Trade": "Growth General Trade", Startups: "Startups", Box: "Box", "No segment": "No segment", "Other segments": "Other segments" };
 const DA_THR = 0.15;
 const DA_COMPANY = __P.company || null;   // every pickup of the company per day (data/company_daily.json): the VP sees all of it, not only the roster merchants
 const DA_MONTH_KEYS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
@@ -185,7 +185,7 @@ function DailyAnalysisScreen({ nav, spec, onBack }) {
   const [q, setQ] = useState(""); const [showAll, setShowAll] = useState(false); const [open, setOpen] = useState(null);
   useEffect(() => { let on = true; mpLoadStore().then((s) => on && setStore(s)).catch((e) => on && setErr(String(e.message || e))); return () => { on = false; }; }, []);
   const { title, sub, rows } = useMemo(() => {
-    if (spec.kind === "sales") { const ids = new Set(spec.ent.newList.concat(spec.ent.cohortList).map((x) => x[0])); return { title: spec.ent.name, sub: "sales · merchants of this sales rep that are in an AM portfolio", rows: LEAD_ROWS.filter((r) => ids.has(r.id)) }; }
+    if (spec.kind === "sales") { const ids = new Set(spec.ent.newList.concat(spec.ent.cohortList, spec.ent.reactList || []).map((x) => x[0])); return { title: spec.ent.name, sub: "sales · merchants of this sales rep that are in an AM portfolio", rows: LEAD_ROWS.filter((r) => ids.has(r.id)) }; }
     const S = leadScope(spec.kind, spec.ent);
     return { title: spec.kind === "vp" ? "All teams" : spec.ent.name, sub: spec.kind === "vp" ? "VP · every team" : spec.kind === "head" ? "Head · " + LEAD_TAB_LABEL[spec.ent.team] : spec.kind === "tl" ? "Team leader · " + LEAD_TAB_LABEL[spec.ent.team] : "Account manager · " + LEAD_TAB_LABEL[spec.ent.team], rows: S.rows };
   }, [spec]);

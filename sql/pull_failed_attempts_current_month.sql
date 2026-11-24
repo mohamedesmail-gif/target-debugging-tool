@@ -6,10 +6,8 @@ WHERE date >= DATE '__FROM__' AND date < DATE '__TO__' AND exception_reason IS N
 GROUP BY exception_reason ORDER BY 1;
 
 -- (2) per merchant: counts by day and reason code, plus the latest 10 attempts. (mid, counts 'day,code,n;...', recent 'tracking,day,code;...', rn)
-WITH latest AS (
-  SELECT business_id, account_manager, ROW_NUMBER() OVER (PARTITION BY business_id ORDER BY date DESC) rn
-  FROM mart.v_merchant_monthly_wide WHERE date >= DATE '__OWNER_SINCE__'),
-owner AS (SELECT business_id FROM latest WHERE rn=1 AND account_manager IN (__AM_LIST__)),
+WITH owner AS (SELECT business_id, account_manager_name AS account_manager FROM public.businesses   -- today's owner (public.businesses), AMs of the targets table
+  WHERE account_type = 'merchant' AND account_manager_name IN (__AM_LIST__)),
 rs AS (SELECT exception_reason r, ROW_NUMBER() OVER (ORDER BY COUNT(*) DESC, exception_reason) - 1 AS code FROM public.deliveries_attempts WHERE date >= DATE '__FROM__' AND date < DATE '__TO__' AND exception_reason IS NOT NULL GROUP BY 1),
 a AS (SELECT x.business_id mid, x.trackingnumber tn, EXTRACT(day FROM x.date)::int dom, rs.code, x.exception_at ea
       FROM public.deliveries_attempts x JOIN owner o ON o.business_id = x.business_id JOIN rs ON rs.r = x.exception_reason
