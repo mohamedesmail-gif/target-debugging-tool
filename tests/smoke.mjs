@@ -420,9 +420,18 @@ check('VP: no heads table any more, tabs instead', !Array.from(document.querySel
     const vt = txt(); check('VP segment table lists Box and No segment like the other segments', vt.includes('Box') && vt.includes('No segment'));
   }
   click(showBtn('Growers')); await sleep(80);
-  const hdr = Array.from(document.querySelectorAll('[data-testid="act-list"] thead th')).map((x) => x.textContent.trim()).join('|');
+  { // aggregated view of the card (VP: per segment), above the merchant list; clicking a segment narrows the list
+    const gt = document.querySelector('[data-testid="act-list"] [data-testid="act-groups"]');
+    const gRows = gt ? Array.from(gt.querySelectorAll('tbody tr')) : [];
+    const nAll = listCount(), totRow = gRows[gRows.length - 1], tc = totRow ? Array.from(totRow.querySelectorAll('td')).map((x) => x.textContent.trim()) : [];
+    check('View merchants (VP) opens an aggregated view per segment whose total = the merchants of the card (' + nAll + ')', !!gt && gt.querySelector('thead th').textContent.trim() === 'Segment' && tc[0] === 'Total' && tc[1] === n0(nAll), tc.join(' | '));
+    const first = gRows[0], fc = Array.from(first.querySelectorAll('td')).map((x) => x.textContent.trim()); click(first); await sleep(80);
+    check('clicking a segment row narrows the merchant list to that segment (' + fc[0] + ': ' + fc[1] + ')', listCount() === Number(fc[1].replace(/,/g, '')) && Array.from(document.querySelectorAll('[data-testid="act-merchants"] tbody tr')).every((r) => r.querySelectorAll('td')[2].textContent.trim() === fc[0]), String(listCount()));
+    click(btn('Show all')); await sleep(60);
+  }
+  const hdr = Array.from(document.querySelectorAll('[data-testid="act-merchants"] thead th')).map((x) => x.textContent.trim()).join('|');
   check('merchant list columns start with Business ID | Merchant | Segment | Account manager', hdr.startsWith('Business ID|Merchant|Segment|Account manager|'), hdr);
-  const row = document.querySelector('[data-testid="act-list"] tbody tr'); const c0 = Array.from(row.querySelectorAll('td')).map((x) => x.textContent.trim());
+  const row = document.querySelector('[data-testid="act-merchants"] tbody tr'); const c0 = Array.from(row.querySelectorAll('td')).map((x) => x.textContent.trim());
   check('merchant list row has an id, a name, a known segment and an account manager', c0[0] && c0[1] && /Key Accounts|Growth Fashion|Growth Cosmetics|Growth General Trade|Startups|Other/.test(c0[2]) && c0[3], c0.join(' | '));
   click(showBtn('Growers')); await sleep(40); }
 { // VP tabs: Totals, then one tab per segment head with team leader tabs and a team member drop-down

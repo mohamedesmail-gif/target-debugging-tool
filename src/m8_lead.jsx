@@ -82,14 +82,23 @@ function leadCrumbs(nav, headId, tlId, lastLabel) {
 }
 // ---------- numbers of a scope (VP / head / team leader / AM) ----------
 function leadScope(kind, ent) {
+  // kind "vpgroup": one VP-only group (Box / No segment / Other segments), ent = { group }
+  if (kind === "vpgroup") { const sc = orgScore("vp", LEAD_VP_ENT); return { ams: [], sales: [], rows: LEAD_EXTRA_ROWS.filter((r) => r.seg === ent.group), sc, g: sc.g, groupBy: { title: "Account manager", of: (r) => r.amName } }; }
   const mem = orgMembers(kind, ent);
   const names = new Set(mem.ams.map((a) => a.name));
   const sc = orgScore(kind, ent);
-  const rows = LEAD_ROWS.filter((r) => names.has(r.amName)), seen = new Set(rows.map((r) => r.id));
+  const rows = LEAD_ROWS.filter((r) => names.has(r.amName)), seen = new Set(rows.map((r) => r.id)), viaSales = new Map();
   // + the merchants of the scope's sales reps (new, last month's new, reactivations), also when they are in no AM portfolio
-  mem.sales.forEach((s) => (s.newList || []).concat(s.cohortList || [], s.reactList || []).forEach((x) => { const r = LEAD_BY_ID.get(x[0]); if (r && !seen.has(r.id)) { rows.push(r); seen.add(r.id); } }));
+  mem.sales.forEach((s) => (s.newList || []).concat(s.cohortList || [], s.reactList || []).forEach((x) => { const r = LEAD_BY_ID.get(x[0]); if (r && !seen.has(r.id)) { rows.push(r); seen.add(r.id); viaSales.set(r.id, s); } }));
   if (kind === "vp") LEAD_EXTRA_ROWS.concat(SALES_EXTRA_ROWS).forEach((r) => { if (!seen.has(r.id)) { rows.push(r); seen.add(r.id); } });   // the VP also sees Box / no-segment merchants
-  return { ...mem, rows, sc, g: sc.g };
+  // how "View merchants" aggregates a card's merchants: per segment (VP), per team leader (head), per account manager and sales rep (team leader).
+  // A merchant counts once: under its AM when the AM is in the scope, otherwise under the sales rep it came with.
+  const tlName = (id) => (id && ORG_TL[id] ? ORG_TL[id].name : "Directly under the head");
+  const groupBy = kind === "vp" ? { title: "Segment", of: (r) => leadSegLabel(r.seg) }
+    : kind === "head" ? { title: "Team leader", of: (r) => { const s = viaSales.get(r.id); return s ? tlName(s.tlId) : tlName(r.tlId); } }
+    : kind === "tl" ? { title: "Account manager / sales rep", of: (r) => { const s = viaSales.get(r.id); return s ? s.name + " (sales)" : r.amName + " (AM)"; } }
+    : null;
+  return { ...mem, rows, sc, g: sc.g, groupBy };
 }
 // where a pickups figure stands against its goal (the monthly target of the targets sheet, factor 1)
 function leadStanding(actual, target, factor) {
@@ -244,8 +253,37 @@ function ActCard({ label, info, value, sub, accent, active, onClick, count }) {
     </div>
   );
 }
-function ActMerchantList({ title, rows, sortBy }) {
-  const [q, setQ] = useState(""); const [all, setAll] = useState(false);
+// aggregated view of a card's merchants (per segment / team leader / AM and sales rep): click a row to narrow the merchant list below to it
+function ActGroupTable({ rows, groupBy, sel, onSel }) {
+  const agg = new Map();
+  rows.forEach((r) => { const k = groupBy.of(r) || "—"; const o = agg.get(k) || { k, n: 0, active: 0, mtd: 0, ptd: 0 }; o.n++; if (r.mtd > 0) o.active++; o.mtd += r.mtd || 0; o.ptd += r.ptd || 0; agg.set(k, o); });
+  const list = [...agg.values()].sort((a, b) => b.mtd - a.mtd || b.n - a.n || a.k.localeCompare(b.k));
+  const tot = list.reduce((o, x) => ({ n: o.n + x.n, active: o.active + x.active, mtd: o.mtd + x.mtd, ptd: o.ptd + x.ptd }), { n: 0, active: 0, mtd: 0, ptd: 0 });
+  const th = { padding: "7px 10px", textAlign: "right", fontSize: 11.5, color: COLORS.textMuted, fontWeight: 600, whiteSpace: "nowrap", background: COLORS.card };
+  const td = { padding: "6px 10px", fontSize: 12.5, whiteSpace: "nowrap", textAlign: "right" };
+  const gr = (o) => (o.ptd > 0 ? lsgn(((o.mtd - o.ptd) / o.ptd) * 100, 1) + "%" : "—");
+  const line = (o, bold) => (<>
+    <td style={td}>{fmt(o.n)}</td><td style={td}>{fmt(o.active)}</td><td style={td}>{fmt(o.mtd)}</td><td style={td}>{fmt(o.ptd)}</td>
+    <td style={{ ...td, color: o.mtd - o.ptd >= 0 ? COLORS.teal : COLORS.coral }}>{lsgn(o.mtd - o.ptd, 0)}</td><td style={td}>{gr(o)}</td>
+    <td style={td}>{tot.mtd ? fmt((o.mtd / tot.mtd) * 100, 1) + "%" : "—"}</td></>);
+  return (
+    <div style={{ ...UI.table, overflowX: "auto", marginBottom: 12 }} className="tt-scroll-x" data-tt="scroll" data-testid="act-groups">
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead><tr><th style={{ ...th, textAlign: "left" }}>{groupBy.title}</th><th style={th}>Merchants</th><th style={th}>Active</th><th style={th}>MTD pickups</th><th style={th}>Same days last month</th><th style={th}>Delta</th><th style={th}>GR %</th><th style={th}>Share of pickups</th></tr></thead>
+        <tbody>
+          {list.map((o) => (
+            <tr key={o.k} onClick={() => onSel(sel === o.k ? null : o.k)} aria-selected={sel === o.k} style={{ borderTop: `1px solid ${COLORS.panelBorder}`, cursor: "pointer", background: sel === o.k ? COLORS.card : undefined }}>
+              <td style={{ ...td, textAlign: "left", color: COLORS.text, fontWeight: sel === o.k ? 700 : 400 }}>{o.k}</td>{line(o)}
+            </tr>))}
+          <tr style={{ borderTop: `2px solid ${COLORS.panelBorder2}`, fontWeight: 700 }}><td style={{ ...td, textAlign: "left" }}>Total</td>{line(tot)}</tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+function ActMerchantList({ title, rows: rows0, sortBy, groupBy }) {
+  const [q, setQ] = useState(""); const [all, setAll] = useState(false); const [grp, setGrp] = useState(null);
+  const rows = groupBy && grp ? rows0.filter((r) => (groupBy.of(r) || "—") === grp) : rows0;
   const ql = q.trim().toLowerCase();
   const list = rows.filter((r) => !ql || (r.name + " " + r.id + " " + r.amName + " " + leadSegLabel(r.seg)).toLowerCase().includes(ql)).slice().sort(sortBy || ((a, b) => b.mtd - a.mtd));
   const shown = all ? list : list.slice(0, 50);
@@ -255,12 +293,14 @@ function ActMerchantList({ title, rows, sortBy }) {
   return (
     <div role="region" aria-label={title} data-testid="act-list" style={{ ...UI.card, marginTop: 12 }}>
       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
-        <h3 style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>{title} · {fmt(list.length)} merchants</h3>
+        <h3 style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>{title}{grp ? " · " + grp : ""} · {fmt(list.length)} merchants</h3>
+        {grp && <button onClick={() => setGrp(null)} style={UI.btnSmall}>Show all</button>}
         <span style={{ flex: 1 }} />
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search ID, name, AM or segment" aria-label="Search the merchants in this list" style={{ ...UI.input, minWidth: 220 }} />
       </div>
+      {groupBy && rows0.length > 0 && <ActGroupTable rows={rows0} groupBy={groupBy} sel={grp} onSel={setGrp} />}
       {list.length === 0 ? <div style={{ fontSize: 12.5, color: COLORS.textMuted }}>No merchants.</div> : (
-        <div style={{ ...UI.table, overflowX: "auto", maxHeight: 460, overflowY: "auto" }} className="tt-scroll-x" data-tt="scroll">
+        <div style={{ ...UI.table, overflowX: "auto", maxHeight: 460, overflowY: "auto" }} className="tt-scroll-x" data-tt="scroll" data-testid="act-merchants">
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead style={{ position: "sticky", top: 0 }}><tr>
               <th style={th}>Business ID</th><th style={th}>Merchant</th><th style={th}>Segment</th><th style={th}>Account manager</th>
@@ -280,7 +320,7 @@ function ActMerchantList({ title, rows, sortBy }) {
     </div>
   );
 }
-function ActivityAnalysis({ rows, sc }) {
+function ActivityAnalysis({ rows, sc, groupBy }) {
   const [open, setOpen] = useState(null);
   const g = sc.g;
   const stats = useMemo(() => {
@@ -316,7 +356,7 @@ function ActivityAnalysis({ rows, sc }) {
       <div className="tt-kpis" style={{ ...grid, gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 150px), 1fr))" }}>   {/* the six groups on one row */}
         {ACT_GROUPS.map(([k, l, c, info]) => <ActCard key={k} label={l} info={info} value={fmt(stats.by[k].length)} accent={c} sub={pct(stats.by[k].length)} active={open === k} onClick={() => toggle(k)} />)}
       </div>
-      {cur && <ActMerchantList key={open} title={cur[0]} rows={cur[1]} sortBy={cur[2]} />}
+      {cur && <ActMerchantList key={open} title={cur[0]} rows={cur[1]} sortBy={cur[2]} groupBy={groupBy} />}
       {segKeys.length > 1 && (
         <div style={{ ...UI.table, overflowX: "auto", marginTop: 14 }} className="tt-scroll-x" data-tt="scroll">
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
@@ -425,7 +465,7 @@ function LeadLists({ rows, sales, sc }) {
 }
 function LeadMain({ kind, ent }) {
   const S = useMemo(() => leadScope(kind, ent), [kind, ent]);
-  return (<div><ActivityAnalysis rows={S.rows} sc={S.sc} /><LeadLists rows={S.rows} sales={S.sales} sc={S.sc} /></div>);
+  return (<div><ActivityAnalysis rows={S.rows} sc={S.sc} groupBy={S.groupBy} /><LeadLists rows={S.rows} sales={S.sales} sc={S.sc} /></div>);
 }
 
 // ---------- screens ----------
@@ -513,7 +553,8 @@ function LeadershipScreen({ nav, mode }) {
   const isAll = tab === "all", head = isAll ? null : LEAD_HEAD_BY_TEAM[tab];
   const [vpSub, setVpSub] = useState("totals");
   const sc = useMemo(() => orgScore("vp", LEAD_VP_ENT), []);
-  const vpItems = [["totals", "Totals"], ...headTabs.map(([k, l]) => [k, l])];
+  const vpGroups = ["Box", "No segment", "Other segments"].filter((g) => LEAD_EXTRA_ROWS.some((r) => r.seg === g));   // VP-only groups (active merchants outside the five segments)
+  const vpItems = [["totals", "Totals"], ...headTabs.map(([k, l]) => [k, l]), ...vpGroups.map((g) => ["vpg:" + g, g])];
   const vpActive = vpItems.some(([k]) => k === vpSub) ? vpSub : "totals";
   const title = isAll ? ORG.vp.name : LEAD_TAB_LABEL[tab];
   return (
@@ -526,13 +567,23 @@ function LeadershipScreen({ nav, mode }) {
         <div>
           <StandingCards sc={sc} kind="vp" ent={LEAD_VP_ENT} />
           <LeadTabs items={vpItems} active={vpActive} onChange={setVpSub} label="Heads" />
-          {vpActive === "totals" ? <LeadMain key="vp" kind="vp" ent={LEAD_VP_ENT} /> : <HeadPanel key={vpActive} head={LEAD_HEAD_BY_TEAM[vpActive]} nav={nav} />}
+          {vpActive === "totals" ? <LeadMain key="vp" kind="vp" ent={LEAD_VP_ENT} /> : vpActive.startsWith("vpg:") ? <VpGroupPanel key={vpActive} group={vpActive.slice(4)} /> : <HeadPanel key={vpActive} head={LEAD_HEAD_BY_TEAM[vpActive]} nav={nav} />}
         </div>
       ) : <HeadPanel key={tab} head={head} nav={nav} />}
     </LeadShell>
   );
 }
 const LEAD_VP_ENT = { t: {}, w: null };
+// VP-only group tab (Box / No segment): the same activity analysis and lists as a segment, for the merchants of that group active this month. No targets: the targets table has none.
+function VpGroupPanel({ group }) {
+  const ent = useMemo(() => ({ group }), [group]);
+  return (
+    <div>
+      <div style={{ fontSize: 12.5, color: COLORS.textMuted, marginBottom: 10 }}>{group}: merchants outside the five target segments with pickups this month (a new or reactivated merchant: since the 25th of last month). The targets table has no targets for this group, so it shows activity only.</div>
+      <LeadMain kind="vpgroup" ent={ent} />
+    </div>
+  );
+}
 
 function AmDetailPanel({ am, nav }) {
   const a = ORG_AM[am.name], sc = useMemo(() => orgScore("am", a), [a]);

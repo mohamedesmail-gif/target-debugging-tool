@@ -61,3 +61,8 @@ Same tabs at merchant level with merchant flags: segment, lifecycle (new / retai
 
 ## Sales view
 Also shows New accounts (MTD): the merchants whose first pickup was this month and who have the rep as owner.
+
+## VP, head and team leader views: segment tabs and "View merchants" (November 2026)
+
+- VP tabs: Totals, the five segments, then **Box** and **No segment** (and **Other segments** when it has merchants). A Box / No segment tab shows the same activity analysis, segment table and top / bottom lists as a segment, for the VP-only merchants of that group (active this month; a new or reactivated merchant since the 25th of last month). There are no targets for these groups.
+- "View merchants" on any card first shows an aggregated table of that card's merchants: per segment (VP), per team leader (head), per account manager and sales rep (team leader; a merchant counts once, under its AM when the AM is in the team, otherwise under the sales rep it came with). Columns: merchants, active, MTD pickups, same days last month, delta, GR %, share of pickups, with a total row. Clicking a row narrows the merchant list below to that group; "Show all" resets it.
